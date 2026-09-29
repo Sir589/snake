@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Had</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --grid: #172033;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --snake: #22c55e;
+    --head: #86efac;
+    --food: #ef4444;
+    --bonus: #facc15;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    touch-action: none;
+  }
+  h1 { margin: 0 0 12px; font-size: 28px; letter-spacing: 1px; }
+  .hud {
+    width: min(480px, 100%);
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 16px;
+  }
+  .hud span b { color: var(--head); }
+  .wrap { position: relative; width: min(480px, 100%); aspect-ratio: 1; }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: var(--panel);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.4);
+  }
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, .78);
+    border-radius: 12px;
+    text-align: center;
+    padding: 16px;
+  }
+  .overlay.hidden { display: none; }
+  .overlay h2 { margin: 0 0 8px; font-size: 26px; }
+  .overlay p { margin: 4px 0; color: var(--muted); }
+  button {
+    margin-top: 14px;
+    padding: 10px 22px;
+    font-size: 16px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--snake);
+    color: #052e16;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .help { margin-top: 12px; color: var(--muted); font-size: 14px; text-align: center; }
+  .pad {
+    display: none;
+    margin-top: 14px;
+    grid-template-columns: repeat(3, 64px);
+    grid-template-rows: repeat(2, 64px);
+    gap: 8px;
+  }
+  .pad button { margin: 0; padding: 0; font-size: 24px; background: var(--panel); color: var(--text); }
+  .pad .up { grid-column: 2; grid-row: 1; }
+  .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 2; }
+  .pad .right { grid-column: 3; grid-row: 2; }
+  @media (hover: none) and (pointer: coarse) { .pad { display: grid; } }
+</style>
+</head>
+<body>
+  <h1>🐍 Had</h1>
+  <div class="hud">
+    <span>Skóre: <b id="score">0</b></span>
+    <span>Úroveň: <b id="level">1</b></span>
+    <span>Rekord: <b id="best">0</b></span>
+  </div>
+  <div class="wrap">
+    <canvas id="game" width="480" height="480"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="title">Had</h2>
+      <p id="msg">Sněz co nejvíc jablek a nenaraz do sebe ani do zdi.</p>
+      <button id="start">Hrát</button>
+    </div>
+  </div>
+  <div class="pad" id="pad">
+    <button class="up" data-dir="up">▲</button>
+    <button class="left" data-dir="left">◀</button>
+    <button class="down" data-dir="down">▼</button>
+    <button class="right" data-dir="right">▶</button>
+  </div>
+  <p class="help">Šipky / WASD = pohyb · Mezerník = pauza · na mobilu tlačítka nebo swipe</p>
+
+<script>
+(() => {
+  const GRID = 20;                 // počet políček v řádku i sloupci
+  const START_SPEED = 140;         // ms na jeden krok
+  const MIN_SPEED = 60;
+  const POINTS_PER_LEVEL = 5;      // kolik jablek na další úroveň
+  const BONUS_CHANCE = 0.2;        // šance, že se objeví zlaté jablko
+  const BONUS_LIFETIME = 40;       // počet kroků, než zlaté jablko zmizí
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const cell = canvas.width / GRID;
+
+  const $score = document.getElementById('score');
+  const $level = document.getElementById('level');
+  const $best = document.getElementById('best');
+  const $overlay = document.getElementById('overlay');
+  const $title = document.getElementById('title');
+  const $msg = document.getElementById('msg');
+  const $start = document.getElementById('start');
+
+  const DIRS = {
+    up: { x: 0, y: -1 },
+    down: { x: 0, y: 1 },
+    left: { x: -1, y: 0 },
+    right: { x: 1, y: 0 },
+  };
+
+  let snake, dir, queue, food, bonus, score, eaten, speed, timer, state;
+  let best = 0;
+  try { best = Number(localStorage.getItem('snake-best')) || 0; } catch (e) {}
+  $best.textContent = best;
+
+  function reset() {
+    const mid = Math.floor(GRID / 2);
+    snake = [{ x: mid, y: mid }, { x: mid - 1, y: mid }, { x: mid - 2, y: mid }];
+    dir = DIRS.right;
+    queue = [];
+    score = 0;
+    eaten = 0;
+    speed = START_SPEED;
+    bonus = null;
+    food = randomFreeCell();
+    updateHud();
+  }
+
+  function randomFreeCell() {
+    const taken = new Set(snake.map(p => p.x + ',' + p.y));
+    if (food) taken.add(food.x + ',' + food.y);
+    if (bonus) taken.add(bonus.x + ',' + bonus.y);
+    const free = [];
+    for (let x = 0; x < GRID; x++)
+      for (let y = 0; y < GRID; y++)
+        if (!taken.has(x + ',' + y)) free.push({ x, y });
+    return free.length ? free[Math.floor(Math.random() * free.length)] : null;
+  }
+
+  function level() { return Math.floor(eaten / POINTS_PER_LEVEL) + 1; }
+
+  function updateHud() {
+    $score.textContent = score;
+    $level.textContent = level();
+    $best.textContent = best;
+  }
+
+  function setDirection(name) {
+    const next = DIRS[name];
+    if (!next) return;
+    if (state === 'ready' || state === 'over') { start(); }
+    if (state !== 'running') return;
+    // Frontu používáme, aby dva rychlé stisky během jednoho kroku nezpůsobily otočení do sebe.
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if (next.x === -last.x && next.y === -last.y) return;
+    if (next === last) return;
+    if (queue.length < 3) queue.push(next);
+  }
+
+  function step() {
+    if (queue.length) dir = queue.shift();
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    const hitWall = head.x < 0 || head.y < 0 || head.x >= GRID || head.y >= GRID;
+    // Ocas se v tomto kroku posune, takže do jeho aktuálního místa narazit nejde.
+    const willGrow = (food && head.x === food.x && head.y === food.y) ||
+                     (bonus && head.x === bonus.x && head.y === bonus.y);
+    const body = willGrow ? snake : snake.slice(0, -1);
+    const hitSelf = body.some(p => p.x === head.x && p.y === head.y);
+    if (hitWall || hitSelf) return gameOver();
+
+    snake.unshift(head);
+
+    if (food && head.x === food.x && head.y === food.y) {
+      score += level();
+      eaten++;
+      food = randomFreeCell();
+      if (!bonus && Math.random() < BONUS_CHANCE) {
+        const c = randomFreeCell();
+        if (c) bonus = { ...c, ttl: BONUS_LIFETIME };
+      }
+      const newSpeed = Math.max(MIN_SPEED, START_SPEED - (level() - 1) * 10);
+      if (newSpeed !== speed) { speed = newSpeed; restartTimer(); }
+    } else if (bonus && head.x === bonus.x && head.y === bonus.y) {
+      score += 5 * level();
+      bonus = null;
+    } else {
+      snake.pop();
+    }
+
+    if (bonus && --bonus.ttl <= 0) bonus = null;
+    if (!food) return gameOver(true);   // celá plocha zaplněna = výhra
+
+    updateHud();
+    draw();
+  }
+
+  function draw() {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--panel');
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // šachovnice
+    ctx.fillStyle = '#172033';
+    for (let x = 0; x < GRID; x++)
+      for (let y = 0; y < GRID; y++)
+        if ((x + y) % 2 === 0) ctx.fillRect(x * cell, y * cell, cell, cell);
+
+    if (food) drawCircle(food, '#ef4444', 0.4);
+    if (bonus) {
+      const blink = bonus.ttl < 12 && bonus.ttl % 2 === 0;
+      if (!blink) drawCircle(bonus, '#facc15', 0.45);
+    }
+
+    snake.forEach((p, i) => {
+      ctx.fillStyle = i === 0 ? '#86efac' : '#22c55e';
+      roundRect(p.x * cell + 1, p.y * cell + 1, cell - 2, cell - 2, 6);
+    });
+    drawEyes(snake[0]);
+  }
+
+  function drawCircle(p, color, r) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x * cell + cell / 2, p.y * cell + cell / 2, cell * r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.fill();
+  }
+
+  function drawEyes(h) {
+    const cx = h.x * cell + cell / 2, cy = h.y * cell + cell / 2;
+    const off = cell * 0.2;
+    const px = -dir.y * off, py = dir.x * off;   // kolmice ke směru pohybu
+    const fx = dir.x * off, fy = dir.y * off;    // posun dopředu
+    ctx.fillStyle = '#052e16';
+    for (const s of [1, -1]) {
+      ctx.beginPath();
+      ctx.arc(cx + fx + px * s, cy + fy + py * s, cell * 0.09, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function restartTimer() {
+    clearInterval(timer);
+    timer = setInterval(step, speed);
+  }
+
+  function start() {
+    reset();
+    state = 'running';
+    $overlay.classList.add('hidden');
+    draw();
+    restartTimer();
+  }
+
+  function togglePause() {
+    if (state === 'running') {
+      state = 'paused';
+      clearInterval(timer);
+      showOverlay('Pauza', 'Stiskni mezerník pro pokračování.', 'Pokračovat');
+    } else if (state === 'paused') {
+      state = 'running';
+      $overlay.classList.add('hidden');
+      restartTimer();
+    }
+  }
+
+  function gameOver(won) {
+    clearInterval(timer);
+    state = 'over';
+    let record = '';
+    if (score > best) {
+      best = score;
+      try { localStorage.setItem('snake-best', String(best)); } catch (e) {}
+      record = ' Nový rekord! 🎉';
+    }
+    updateHud();
+    draw();
+    showOverlay(won ? 'Vyhrál jsi!' : 'Konec hry',
+                'Skóre: ' + score + '.' + record, 'Hrát znovu');
+  }
+
+  function showOverlay(title, msg, btn) {
+    $title.textContent = title;
+    $msg.textContent = msg;
+    $start.textContent = btn;
+    $overlay.classList.remove('hidden');
+  }
+
+  $start.addEventListener('click', () => {
+    if (state === 'paused') togglePause(); else start();
+  });
+
+  const KEYS = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    w: 'up', s: 'down', a: 'left', d: 'right',
+    W: 'up', S: 'down', A: 'left', D: 'right',
+  };
+  document.addEventListener('keydown', e => {
+    if (e.key === ' ' || e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      if (state === 'ready' || state === 'over') start(); else togglePause();
+      return;
+    }
+    if (KEYS[e.key]) { e.preventDefault(); setDirection(KEYS[e.key]); }
+  });
+
+  document.querySelectorAll('#pad button').forEach(b =>
+    b.addEventListener('pointerdown', e => { e.preventDefault(); setDirection(b.dataset.dir); }));
+
+  let touchStart = null;
+  canvas.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    touchStart = { x: t.clientX, y: t.clientY };
+  }, { passive: true });
+  canvas.addEventListener('touchend', e => {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x, dy = t.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+    setDirection(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up'));
+  });
+
+  state = 'ready';
+  reset();
+  draw();
+})();
+</script>
+</body>
+</html>
