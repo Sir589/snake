@@ -990,7 +990,7 @@
     GEO.cup = new THREE.LatheGeometry(pts, 12);
     GEO.cupStripe = new THREE.CylinderGeometry(0.0478, 0.0462, 0.02, 12, 1, true);
     GEO.water = new THREE.CylinderGeometry(0.043, 0.043, 0.004, 12);
-    GEO.spearShaft = new THREE.CylinderGeometry(0.016, 0.019, 1.0, 6);
+    GEO.spearShaft = new THREE.CylinderGeometry(0.016, 0.02, 1.5, 6);
 
     MAT.wood = std(0xa4774a);
     MAT.woodDark = std(0x6e4b2c);
@@ -1038,8 +1038,8 @@
     g.add(part(GEO.cone3, body, 0.022 * s, 0.05 * s, 0.006 * s, 0.01 * s, 0.045 * s, 0, 0, 0, -0.5));
     g.add(part(GEO.sphere, MAT.black, 0.008 * s, 0.008 * s, 0.008 * s, -0.082 * s, 0.01 * s, 0.021 * s));
     if (cooked) {
-      g.add(part(GEO.box, MAT.grill, 0.006 * s, 0.07 * s, 0.055 * s, -0.035 * s, 0.002 * s, 0, 0, 0, 0.4));
-      g.add(part(GEO.box, MAT.grill, 0.006 * s, 0.062 * s, 0.05 * s, 0.03 * s, 0.002 * s, 0, 0, 0, 0.4));
+      g.add(part(GEO.box, MAT.grill, 0.007 * s, 0.042 * s, 0.049 * s, -0.035 * s, 0.004 * s, 0, 0, 0, 0.3));
+      g.add(part(GEO.box, MAT.grill, 0.007 * s, 0.036 * s, 0.045 * s, 0.035 * s, 0.003 * s, 0, 0, 0, 0.3));
     }
     g.rotation.set(0.15, 0.3, -0.35);
     g.position.set(-0.02, 0.03, 0);
@@ -1379,7 +1379,7 @@
         spear.t += dt;
         const t = spear.t;
         const k = t < 0.07 ? easeOut(t / 0.07) : 1 - ease((t - 0.1) / 0.28);
-        p.position.set(-0.05 * k, 0.045 * k, -0.52 * k);
+        p.position.set(-0.03 * k, 0.03 * k, -0.45 * k);
         p.rotation.set(0.05 * k, 0.07 * k, -0.25 * k);
         if (!spear.hitDone && t >= 0.06) { spear.hitDone = true; spear.strike(); }
         if (t >= 0.4) spear.t = -1;
@@ -1439,9 +1439,9 @@
     vm.add(pv);
     const shaft = new THREE.Mesh(GEO.spearShaft, MAT.wood);
     shaft.rotation.x = Math.PI / 2;
-    shaft.position.z = -0.3;
+    shaft.position.z = -0.05;
     pv.add(shaft);
-    pv.add(part(GEO.cyl6, MAT.grip, 0.022, 0.2, 0.022, 0, 0, 0, Math.PI / 2, 0, 0));
+    pv.add(part(GEO.cyl6, MAT.grip, 0.023, 0.2, 0.023, 0, 0, 0, Math.PI / 2, 0, 0));
     pv.add(part(GEO.cyl6, MAT.rope, 0.024, 0.07, 0.024, 0, 0, -0.77, Math.PI / 2, 0, 0));
     // leaf-shaped metal blade with two small barbs
     pv.add(part(GEO.cone4, MAT.metal, 0.07, 0.34, 0.022, 0, 0, -0.97, -Math.PI / 2, 0, 0));
@@ -1564,6 +1564,7 @@
       G.events.on('ui:blocking', (on) => { if (on) releaseButtons(); });
       G.events.on('game:paused', () => releaseButtons());
       G.events.on('game:menu', () => { releaseButtons(); unequip(); P.hand.visible = false; });
+      G.events.on('game:over', () => { releaseButtons(); unequip(); P.hand.visible = false; });
     },
     reset,
     save,

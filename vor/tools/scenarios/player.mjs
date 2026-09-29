@@ -341,7 +341,7 @@ export default async (page, h) => {
 
   // --- far from the raft ----------------------------------------------------------------------------
   await h.eval(() => { window.__notes = []; G.debug.teleport(90, 0); });
-  await gw(0.3);
+  await gw(0.7);                            // checked twice a second
   ok((await h.eval(() => window.__notes)).includes('Plav zpátky k voru!'), 'far-away notify');
   s = await st();
   ok(s.hint.includes('plav zpátky'), 'far-away hint: ' + s.hint);
