@@ -890,7 +890,7 @@
     const L = R(5.8, 7.2), W = R(2.3, 2.8), D = R(1.4, 1.8);
     const heading = sp.a + Math.PI / 2 + (rnd() - 0.5) * 0.8;   // keel roughly along the shore
     const roll = R(0.28, 0.5), pitch = (rnd() - 0.5) * 0.14;
-    const M = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sp.h - D * 0.45, sp.z),
+    const M = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sp.h - D * 0.22, sp.z),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(roll, -heading, pitch, 'YZX')), new THREE.Vector3(1, 1, 1));
     const wood = [0x5b4633, 0x6b543a, 0x4e3c2b, 0x73593d];
     const P0 = new THREE.Vector3(), P1 = new THREE.Vector3();
@@ -925,13 +925,13 @@
     const levels = [0.35, 0.7, 1.05, 1.4];
     for (let li = 0; li < levels.length; li++) {
       for (let side = -1; side <= 1; side += 2) {
-        if (side < 0 && li > 1) continue;
+        if (side < 0 && li > 2) continue;
         for (let i = 0; i < nr - 1; i++) {
-          if (rnd() < (side < 0 ? 0.3 + li * 0.15 : 0.25 + li * 0.08)) continue;
+          if (rnd() < (side < 0 ? 0.22 + li * 0.18 : 0.2 + li * 0.08)) continue;
           const x0 = -L / 2 + 0.55 + (i * (L - 1.1)) / (nr - 1), x1 = -L / 2 + 0.55 + ((i + 1) * (L - 1.1)) / (nr - 1);
           hullPt(x0 - 0.1, side, levels[li], P0); hullPt(x1 + 0.1, side, levels[li], P1);
           P0.z += side * 0.05; P1.z += side * 0.05;
-          put(beam(P0, P1, 0.3, 0.06), wood[(li + i) % 4]);
+          put(beam(P0, P1, 0.34, 0.06), wood[(li + i) % 4]);
         }
       }
     }
@@ -1025,14 +1025,20 @@
     if (!isl.hut) isl.T.bumps.push({ x: px, z: pz, r: 0.18, ir2: 1 / (0.18 * 0.18), y: py, h: 2.6, flat: true });
   }
   function buildFlagCloth(isl, rnd) {
-    const cols = 7, rows = 3, W = 1.3, H = 0.78;
-    const colors = [[0xd9453a, 0xf3efe4, 0xd9453a], [0x2f6fb0, 0xf1d24a, 0x2f6fb0], [0x2a2a2a, 0xf3efe4, 0x2a2a2a]];
-    const pal = colors[Math.floor(rnd() * colors.length)];
+    // maritime signal flags: 'O' (red/yellow diagonal, man overboard!), 'N' (blue/white check),
+    // or a plain weathered red pennant
+    const cols = 6, rows = 4, W = 1.15, H = 0.72;
+    const kind = Math.floor(rnd() * 3);
+    const cellHex = (i, j) => {
+      if (kind === 0) return (i + 0.5) / cols > (j + 0.5) / rows ? 0xf2c230 : 0xd23b2f;
+      if (kind === 1) return ((Math.floor(i * 4 / cols) + Math.floor(j * 4 / rows)) & 1) ? 0x2f5fa8 : 0xf1efe6;
+      return i === cols - 1 ? 0xa8342b : 0xcf4436;
+    };
     const pos = [], col = [];
     const c = new THREE.Color();
     for (let j = 0; j < rows; j++) {
-      c.setHex(pal[j]);
       for (let i = 0; i < cols; i++) {
+        c.setHex(cellHex(i, j));
         // tattered end: the last column is shorter on some rows
         const x0 = (i / cols) * W, x1 = ((i + 1) / cols) * W * (i === cols - 1 && j !== 1 ? 0.93 : 1);
         const y0 = -(j / rows) * H, y1 = -((j + 1) / rows) * H;
