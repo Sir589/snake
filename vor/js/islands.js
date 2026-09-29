@@ -6,7 +6,7 @@
   'use strict';
 
   const G = window.G;
-  if (!G) return;
+  if (!G || !window.THREE) return;
 
   const TAU = Math.PI * 2;
   const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
@@ -482,8 +482,8 @@
     // --- shipwreck (first so it gets the room it needs) ---
     const wantWreck = gen.wreck !== undefined ? gen.wreck : (feat.wreck || rnd() < 0.4);
     if (wantWreck) {
-      const sp = findSpot(1.28, 1.48, 4.6, -0.2, 0.55, 60) || findSpot(1.15, 1.6, 3.6, -0.4, 0.7, 60);
-      if (sp) buildWreck(isl, solid, rnd, sp);
+      const sp = findSpot(1.14, 1.34, 4.6, 0.12, 0.66, 60) || findSpot(1.05, 1.5, 3.6, -0.2, 0.75, 60);
+      if (sp) buildWreck(isl, solid, leaf, rnd, sp);
     }
     // --- hut ---
     const wantHut = gen.hut !== undefined ? gen.hut : (feat.hut || rnd() < 0.25);
@@ -597,7 +597,11 @@
       group.add(lm);
       isl.lootMesh = lm;
     }
-    if (isl.flag) buildFlagCloth(isl, rnd);
+    if (isl.flag) {
+      buildFlagCloth(isl, rnd);
+      windDir(_w);
+      isl.flag.yaw = isl.flagMesh.rotation.y = Math.atan2(-_w.z, _w.x);
+    }
     buildFoam(isl, rnd);
 
     writeFronds(isl);
@@ -683,7 +687,9 @@
       return out;
     }
     const n = 0.5 + 0.5 * Math.sin(cx * 0.41 + T.q1 * 2) * Math.cos(cz * 0.37 + T.q2 * 2);
-    out.copy(CC.grassLight).lerp(CC.jungle, clamp(n * 0.85 + (1 - zone) * 0.3, 0, 1));
+    const g = clamp(n * 0.85 + (1 - zone) * 0.3, 0, 1);
+    if (g < 0.5) out.copy(CC.grassLight).lerp(CC.grass, g * 2);
+    else out.copy(CC.grass).lerp(CC.jungle, (g - 0.5) * 2);
     if (T.feat.lush) out.lerp(CC.jungle, 0.25);
     if (T.feat.sandy) out.lerp(CC.grassLight, 0.35);
     const steep = clamp((0.9 - ny) / 0.22, 0, 1);
@@ -885,12 +891,12 @@
   }
 
   // --- shipwreck ----------------------------------------------------------------------------------
-  function buildWreck(isl, b, rnd, sp) {
+  function buildWreck(isl, b, leaf, rnd, sp) {
     const R = (a, c) => a + (c - a) * rnd();
     const L = R(5.8, 7.2), W = R(2.3, 2.8), D = R(1.4, 1.8);
     const heading = sp.a + Math.PI / 2 + (rnd() - 0.5) * 0.8;   // keel roughly along the shore
     const roll = R(0.28, 0.5), pitch = (rnd() - 0.5) * 0.14;
-    const M = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sp.h - D * 0.22, sp.z),
+    const M = new THREE.Matrix4().compose(new THREE.Vector3(sp.x, sp.h - D * 0.18, sp.z),
       new THREE.Quaternion().setFromEuler(new THREE.Euler(roll, -heading, pitch, 'YZX')), new THREE.Vector3(1, 1, 1));
     const wood = [0x5b4633, 0x6b543a, 0x4e3c2b, 0x73593d];
     const P0 = new THREE.Vector3(), P1 = new THREE.Vector3();
@@ -920,20 +926,33 @@
         }
       }
     }
-    // planks (strakes): the half-buried low side keeps most of them; the high side (in the air)
-    // keeps its lower planks with gaps, so the rib tops stick out like a skeleton
-    const levels = [0.35, 0.7, 1.05, 1.4];
-    for (let li = 0; li < levels.length; li++) {
-      for (let side = -1; side <= 1; side += 2) {
-        if (side < 0 && li > 2) continue;
-        for (let i = 0; i < nr - 1; i++) {
-          if (rnd() < (side < 0 ? 0.22 + li * 0.18 : 0.2 + li * 0.08)) continue;
-          const x0 = -L / 2 + 0.55 + (i * (L - 1.1)) / (nr - 1), x1 = -L / 2 + 0.55 + ((i + 1) * (L - 1.1)) / (nr - 1);
-          hullPt(x0 - 0.1, side, levels[li], P0); hullPt(x1 + 0.1, side, levels[li], P1);
-          P0.z += side * 0.05; P1.z += side * 0.05;
-          put(beam(P0, P1, 0.34, 0.06), wood[(li + i) % 4]);
+    // hull shell: planked bands between the stations, double sided (leaf builder), with holes and
+    // a ragged broken top edge; the seaward (high) side is broken off lower so the ribs stick out
+    const NX = 8, NBAND = 5, TH = Math.PI / 2 + 0.1;
+    const Q0 = new THREE.Vector3(), Q1 = new THREE.Vector3(), Q2 = new THREE.Vector3(), Q3 = new THREE.Vector3();
+    const pc = new THREE.Color();
+    for (let side = -1; side <= 1; side += 2) {
+      const top = side > 0 ? NBAND : 3;
+      for (let sx = 0; sx < NX; sx++) {
+        const xa = -L / 2 + 0.2 + (sx * (L - 0.4)) / NX, xb = -L / 2 + 0.2 + ((sx + 1) * (L - 0.4)) / NX;
+        const lim = top - (rnd() < 0.45 ? 1 : 0) - (side < 0 && rnd() < 0.25 ? 1 : 0);
+        for (let bnd = 0; bnd < lim; bnd++) {
+          if (bnd > 0 && rnd() < (side > 0 ? 0.08 : 0.15)) continue;
+          const ta = (bnd / NBAND) * TH, tb = ((bnd + 1) / NBAND) * TH;
+          hullPt(xa, side, ta, Q0).applyMatrix4(M); hullPt(xb, side, ta, Q1).applyMatrix4(M);
+          hullPt(xb, side, tb, Q2).applyMatrix4(M); hullPt(xa, side, tb, Q3).applyMatrix4(M);
+          pc.setHex(bnd % 2 ? 0x7d6648 : 0x69533a).multiplyScalar(1 + (rnd() - 0.5) * 0.14);
+          leaf.tri(Q0, Q1, Q2, pc);
+          leaf.tri(Q0, Q2, Q3, pc);
         }
       }
+    }
+    // gunwale remains on the landward side
+    for (let i = 0; i < nr - 1; i++) {
+      if (rnd() < 0.35) continue;
+      const x0 = -L / 2 + 0.55 + (i * (L - 1.1)) / (nr - 1), x1 = -L / 2 + 0.55 + ((i + 1) * (L - 1.1)) / (nr - 1);
+      hullPt(x0 - 0.1, 1, TH, P0); hullPt(x1 + 0.1, 1, TH, P1);
+      put(beam(P0, P1, 0.14, 0.12), wood[2]);
     }
     // a few deck boards across the stern
     for (let i = 0; i < 3; i++) {
@@ -1353,7 +1372,9 @@
     for (let t = 0; t < 10; t++) {
       let s = side || (Math.random() < 0.65 ? -lastSide : lastSide);
       if (t >= 5 && !side) s = -s;
-      const lateral = Math.max(28, isl.radius + raftR + G.rand(SAFE_GAP + 1, 30));
+      // 28–60 m to the side, but always far enough that the shore misses the raft by > SAFE_GAP
+      const minLat = Math.max(28, isl.radius + raftR + SAFE_GAP + 1);
+      const lateral = G.rand(minLat, Math.min(Math.max(60, minLat), minLat + 24));
       const along = SPAWN_DIST + G.rand(-10, 15) + (t % 5) * 45;
       const x = _w.x * along - _w.z * lateral * s, z = _w.z * along + _w.x * lateral * s;
       if (clearOfOthers(isl, x, z)) { isl.position.set(x, 0, z); isl.side = s; lastSide = s; return true; }
@@ -1528,7 +1549,15 @@
     buildShared();
     ready = true;
     G.events.on('game:menu', () => { pendingDecor = G.state === 'menu' && !list.length; });
-    G.debug.island = (opts) => spawnIsland(Object.assign({ near: true, wreck: true }, opts || {}));
+    // Debug hooks return a plain summary (cheap to pass out of page.evaluate); the island object
+    // itself is on the non-enumerable property `island`.
+    const dbgOut = (isl) => {
+      if (!isl) return null;
+      const o = summary(isl);
+      Object.defineProperty(o, 'island', { value: isl, enumerable: false });
+      return o;
+    };
+    G.debug.island = (opts) => dbgOut(spawnIsland(Object.assign({ near: true, wreck: true }, opts || {})));
     G.debug.visitIsland = () => {
       const isl = I.nearest() || spawnIsland({ near: true, wreck: true });
       if (!isl) return null;
@@ -1537,7 +1566,7 @@
       const x = isl.position.x + Math.cos(a) * r, z = isl.position.z + Math.sin(a) * r;
       if (typeof G.debug.teleport === 'function') G.debug.teleport(x, z);
       else if (G.player && G.player.position) G.player.position.set(x, heightAtIsland(isl, x, z) || 0, z);
-      return isl;
+      return dbgOut(isl);
     };
   }
 

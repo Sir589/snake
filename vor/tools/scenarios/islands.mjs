@@ -49,7 +49,8 @@ export default async (page, h) => {
 
   // --- debug island next to the raft ---------------------------------------------------------------
   const s1 = await h.eval(() => {
-    const isl = G.debug.island();
+    const dbg = G.debug.island();
+    const isl = dbg.island;
     window.__isl = isl;
     const P = isl.provider, c = isl.position;
     // beach edge height: walk outwards along one direction until heightAt returns null
@@ -60,6 +61,7 @@ export default async (page, h) => {
       edge = hh;
     }
     return Object.assign(isl.summary(), {
+      plain: JSON.stringify(dbg).length < 1000 && dbg.name === isl.name && G.islands.list.includes(isl),
       kind: P.kind, sameVel: P.velocity === G.islands.velocity,
       inGround: G.ground.providers.includes(P), inScene: !!isl.group.parent,
       hc: P.heightAt(c.x, c.z), out: P.heightAt(c.x + isl.radius + 1, c.z), edge,
@@ -70,6 +72,7 @@ export default async (page, h) => {
     });
   });
   note('spawned: ' + JSON.stringify(s1));
+  ok(s1.plain, 'G.debug.island() returns a plain summary (+ non-enumerable .island)');
   ok(s1.kind === 'island' && s1.sameVel && s1.inGround && s1.inScene, 'ground provider (kind island, shared velocity) + scene');
   ok(s1.hc > 2 && s1.hc < 12, 'hill height at the centre: ' + s1.hc);
   ok(s1.out === null, 'heightAt outside the island is null');
