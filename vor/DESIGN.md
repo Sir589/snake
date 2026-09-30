@@ -537,6 +537,12 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Island variety (ROADMAP 7).** createIsland() draws size class (`small|medium|large`, large hill radius 22–29 m) and
+  outline `shape` (`round|long|bay|lobed|twin`) from a second random stream, then a flora `theme`
+  (`tropical|jungle|pines|bananas`) with extra trees in `isl.trees` ({kind: broadleaf|pine|banana}, E → prkno/list or
+  `banan`) and sometimes a cave (`isl.cave`: boulder ring = ground bumps, opening to the sea, crystals, loot chest →
+  `Prohledat jeskyni`). Saved: `trees` bitmask, `cave`. `G.debug.island({shape, size, cave, name, seed})`.
+  Summary adds `size, shape, theme, cave, trees`.
 - **Diving (ROADMAP 6).** player.js: in the water KeyQ (touch ⤓) dives (`G.player.diving`), underwater movement
   follows the view pitch, Space / Q rise / sink; `breath` 0..100 (≈32 s of air, refills in ≈3.5 s at the surface), at 0
   damage source `drown` ("Došel ti dech pod vodou."); `depth` = water above the eyes. Floors: `G.seabed.heightAt` or

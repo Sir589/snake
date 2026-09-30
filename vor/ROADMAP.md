@@ -28,7 +28,11 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    *Hotovo:* ve vodě Q = potopit se, Mezerník = nahoru, pod vodou se plave směrem pohledu. Dech ~30 s (ukazatel v HUD),
    pak se hráč topí. Dno ~10–16 m: písečné duny, korály, mořská tráva, kameny, mušle, barevné rybky a občas truhla
    s pokladem (zlato, kov…). Vor je zespodu strop. Na mobilu tlačítko ⤓. Test: `tools/scenarios/dive.mjs`.
-7. **Ostrovy**: každý jiný – velikost, tvar, druhy stromů, skály, jeskyně.
+7. ✅ **HOTOVO – Ostrovy**: každý jiný – velikost, tvar, druhy stromů, skály, jeskyně.
+   *Hotovo:* malé / střední / velké ostrovy; tvary kulatý, protáhlý, se zátokou, laločnatý a dvojhorka; vedle palem
+   listnaté stromy (větve → prkna, listy), borovice (větve) a banánovníky (nová potravina Banán); skalnaté ostrovy
+   s borovicemi; jeskyně ve svahu se svítícími krystaly a truhlou s pokladem. Nové ostrovy: Jeskynní ostrov, Borový ostrov,
+   Banánová zátoka, Dlouhý ostrov, Dvojhorka, Džunglový ostrov, Laločnatý ostrov. Test: `tools/scenarios/isles.mjs`.
 8. **Zvířata na voru**: kráva, slepice, ovce, koza, prase (krmení, produkty) a papoušek, kterého jde pojmenovat.
 9. **Pohled z první osoby u kanónu** (kanón už se otáčí o 360°).
 10. **Multiplayer** – vyžaduje server (např. WebSocket/WebRTC), synchronizaci voru a hráčů. Velký projekt.

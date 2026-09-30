@@ -49,7 +49,17 @@
     ['Ostrov Ztracené vlajky', { flag: 1 }],
     ['Slunečná pláž', { sandy: 1 }],
     ['Písečný ostrůvek', { small: 1, sandy: 1 }],
+    ['Jeskynní ostrov', { cave: 1, rocky: 1 }],
+    ['Borový ostrov', { pines: 1 }],
+    ['Banánová zátoka', { bananas: 1, shape: 'bay' }],
+    ['Dlouhý ostrov', { shape: 'long' }],
+    ['Dvojhorka', { shape: 'twin', big: 1 }],
+    ['Džunglový ostrov', { jungle: 1, lush: 1, big: 1 }],
+    ['Laločnatý ostrov', { shape: 'lobed' }],
   ];
+  const LABEL_TREE = 'Nasbírat větve';
+  const LABEL_BANANA = 'Utrhnout banány';
+  const LABEL_CAVE = 'Prohledat jeskyni';
 
   // Palette (sRGB hex; converted to linear THREE.Color in init)
   const HEX = {
@@ -235,6 +245,7 @@
       foam: new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, depthWrite: false,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
       ring: null,
+      crystal: new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x3fb8e0, emissiveIntensity: 1.2, flatShading: true, roughness: 0.3 }),
     };
     mats.solid.name = 'island-solid';
     mats.leaf.name = 'island-leaf';
@@ -249,6 +260,7 @@
       coco: makeCocoGeo(rnd),
       pile: makePileGeo(rnd),
       loot: makeLootGeo(rnd),
+      bananas: makeBananaGeo(rnd),
     };
   }
 
@@ -297,6 +309,21 @@
       b.geo(g, tr(p[0], p[1], p[2], rnd() * 3, rnd() * 3, rnd() * 3, p[3], p[4], p[5]), p[6], 0.1, rnd);
       g.dispose();
     }
+    return b.build();
+  }
+  // A bunch of bananas hanging from its stem.
+  function makeBananaGeo(rnd) {
+    const b = new Builder();
+    const cyl = new THREE.CylinderGeometry(1, 0.7, 1, 6, 1);
+    b.geo(cyl, tr(0, 0.1, 0, 0, 0, 0, 0.03, 0.5, 0.03), 0x6f7a3a, 0.05, rnd);
+    for (let row = 0; row < 3; row++) {
+      for (let k = 0; k < 6; k++) {
+        const a = k / 6 * TAU + row * 0.5;
+        b.geo(cyl, tr(Math.cos(a) * 0.09, -0.05 - row * 0.1, Math.sin(a) * 0.09, Math.sin(a) * 0.5, 0, -Math.cos(a) * 0.5, 0.03, 0.2, 0.03),
+          row === 2 ? 0xe8d04a : 0xf2d95a, 0.08, rnd);
+      }
+    }
+    cyl.dispose();
     return b.build();
   }
   // Sea chest with iron bands and a rusty pipe: the wreck's loot marker.
@@ -396,7 +423,9 @@
     if (Number(o.hillRadius) > 0) g.hillRadius = Number(o.hillRadius);
     if (Number(o.hillHeight) > 0) g.hillHeight = Number(o.hillHeight);
     if (Number(o.palms) > 0) g.palms = Math.round(Number(o.palms));
-    for (const k of ['wreck', 'hut', 'flag', 'small']) if (typeof o[k] === 'boolean') g[k] = o[k];
+    for (const k of ['wreck', 'hut', 'flag', 'small', 'cave']) if (typeof o[k] === 'boolean') g[k] = o[k];
+    if (['small', 'medium', 'large'].includes(o.size)) g.size = o.size;
+    if (['round', 'long', 'bay', 'lobed', 'twin'].includes(o.shape)) g.shape = o.shape;
     return g;
   }
 
@@ -406,11 +435,20 @@
     const Ri = (a, b) => Math.floor(a + (b - a + 1) * rnd());
     const feat = featuresFor(name.replace(/ [IVX]+$/, ''));
     const small = gen.small !== undefined ? gen.small : !!feat.small;
+    // variety (ROADMAP 7) from its own random stream, so the older features keep their rolls
+    const vr = mulberry(((seed ^ hashStr(name)) + 0x2b7e1516) >>> 0);
+    const VR = (a, b) => a + (b - a) * vr();
+    const sizeRoll = vr(), shapeRoll = vr();
+    const size = gen.size || (small ? 'small' : feat.big || sizeRoll < 0.25 ? 'large' : 'medium');
+    const SHAPES = ['round', 'long', 'bay', 'lobed', 'twin'];
+    const shape = gen.shape || feat.shape || SHAPES[Math.floor(shapeRoll * SHAPES.length)];
 
     // --- shape ---
     let hillR = gen.hillRadius || (small ? R(10, 13.5) : R(11, 22));
-    hillR = clamp(hillR, 8, 26);
+    if (!gen.hillRadius && size === 'large') hillR = VR(22, 29);
+    hillR = clamp(hillR, 8, 30);
     let hillH = gen.hillHeight || R(3, 9);
+    if (!gen.hillHeight && size === 'large') hillH = Math.min(9.5, hillH * VR(1.1, 1.3));
     if (feat.sandy) hillH *= 0.6;
     if (feat.rocky) hillH += 1.5;
     hillH = clamp(hillH, 2, 0.45 * hillR);
@@ -428,14 +466,25 @@
     };
     const pa = R(0, TAU), pd = hillR * R(0.2, 0.42), r2 = hillR * R(0.3, 0.45);
     T.p2x = Math.cos(pa) * pd; T.p2z = Math.sin(pa) * pd; T.ir2 = 1 / (r2 * r2); T.h2 = hillH * R(0, 0.28);
+    const twA = VR(0, TAU), twD = hillR * VR(0.45, 0.6), twR = hillR * VR(0.42, 0.52), twH = VR(0.6, 0.9);
+    if (shape === 'twin') {                          // a second summit
+      T.p2x = Math.cos(twA) * twD; T.p2z = Math.sin(twA) * twD; T.ir2 = 1 / (twR * twR); T.h2 = hillH * twH;
+    }
+    // outline shape: stretched (long), a sheltered sandy cove (bay), three lobes, or round
+    const eL = shape === 'long' ? VR(0.22, 0.34) : 0, pL = VR(0, TAU);
+    const bayA = VR(0, TAU), bayW = VR(0.35, 0.6), bayD = shape === 'bay' ? VR(0.32, 0.46) : 0;
+    const lob = shape === 'lobed' ? VR(0.1, 0.16) : 0, lobP = VR(0, TAU);
     const ab = [R(0.04, 0.08), R(0.02, 0.05), R(0.01, 0.03)], pb = [R(0, TAU), R(0, TAU), R(0, TAU)];
     const ah = [R(0.05, 0.1), R(0.03, 0.06), R(0.01, 0.03)], ph = [R(0, TAU), R(0, TAU), R(0, TAU)];
     for (let i = 0; i <= OUT_N; i++) {
       const a = (i % OUT_N) / OUT_N * TAU;
       const kh = 1 + ah[0] * Math.sin(2 * a + ph[0]) + ah[1] * Math.sin(3 * a + ph[1]) + ah[2] * Math.sin(5 * a + ph[2]);
       const kb = 1 + ab[0] * Math.sin(2 * a + pb[0]) + ab[1] * Math.sin(3 * a + pb[1]) + ab[2] * Math.sin(4 * a + pb[2]);
-      const rh = hillR * kh;
-      const rb = Math.max(rh + beachW * 0.65, (hillR + beachW) * kb);
+      let ks = 1 + eL * Math.cos(2 * (a - pL)) + lob * Math.sin(3 * a + lobP);
+      if (bayD) { const d = Math.atan2(Math.sin(a - bayA), Math.cos(a - bayA)); ks *= 1 - bayD * Math.exp(-(d / bayW) * (d / bayW)); }
+      const kbS = bayD ? 1 - (1 - ks) * 0.7 : ks;      // the cove keeps a wide beach
+      const rh = hillR * kh * ks;
+      const rb = Math.max(rh + beachW * 0.65, (hillR + beachW) * kb * kbS);
       T.outH[i] = rh; T.outB[i] = rb;
       if (rb > T.maxR) T.maxR = rb;
       if (rh < T.minH) T.minH = rh;
@@ -452,6 +501,7 @@
       hillRadius: hillR, hillHeight: hillH,
       provider: null, shallow: null,
       palms: [], rocks: [], wreck: null, hut: null, flag: null, turtles: 0,
+      trees: [], cave: null, size, shape, theme: 'tropical', bananaIM: null, crystalMesh: null, caveLoot: null,
       fr: [], co: [],
       its: [], disposables: [],
       frondIM: null, cocoIM: null, pileIM: null, lootMesh: null, flagMesh: null, flagRest: null, foam: null,
@@ -554,6 +604,26 @@
       if (sp) buildShell(solid, rnd, sp);
     }
 
+    // --- a cave in the hillside (ROADMAP 7) ---
+    const caveRoll = vr();
+    const wantCave = gen.cave !== undefined ? gen.cave : (!!feat.cave || (!small && hillH >= 3.5 && caveRoll < 0.35));
+    if (wantCave) {
+      const sp = findSpot(0.9, 1.05, 3.6, 0.45, 2.2, 90) || findSpot(0.8, 1.15, 3.4, 0.3, 3, 90);
+      if (sp) buildCave(isl, solid, rnd, sp);
+    }
+    // --- other kinds of trees: jungle broadleaves, pines, bananas ---
+    const themeRoll = vr();
+    const theme = feat.jungle ? 'jungle' : feat.pines || feat.rocky ? 'pines' : feat.bananas ? 'bananas'
+      : ['tropical', 'tropical', 'jungle', 'pines', 'bananas'][Math.floor(themeRoll * 5)];
+    isl.theme = theme;
+    const cnt = (a, b) => Math.floor(VR(a, b + 0.999));
+    const nBroad = theme === 'jungle' ? cnt(4, 7) : theme === 'tropical' ? cnt(0, 1) : 0;
+    const nPine = theme === 'pines' ? cnt(3, 6) : 0;
+    const nBanana = theme === 'bananas' ? cnt(3, 5) : theme === 'jungle' ? cnt(1, 2) : theme === 'tropical' ? cnt(0, 1) : 0;
+    for (let i = 0; i < nBroad; i++) { const sp = findSpot(0.05, 0.92, 2.1, 0.8, 99, 40); if (sp) buildBroadleaf(isl, solid, leaf, rnd, sp); }
+    for (let i = 0; i < nPine; i++) { const sp = findSpot(0.05, 0.92, 1.7, 0.8, 99, 40); if (sp) buildPine(isl, solid, leaf, rnd, sp); }
+    for (let i = 0; i < nBanana; i++) { const sp = findSpot(0.4, 1.1, 1.5, 0.45, 99, 40); if (sp) buildBanana(isl, solid, leaf, rnd, sp); }
+
     // --- meshes ---
     const land = new THREE.Mesh(solid.build(), mats.solid);
     land.name = 'island-land';
@@ -604,6 +674,32 @@
       buildFlagCloth(isl, rnd);
       windDir(_w);
       isl.flag.yaw = isl.flagMesh.rotation.y = Math.atan2(-_w.z, _w.x);
+    }
+    const bananas = isl.trees.filter((t) => t.kind === 'banana');
+    if (bananas.length) {
+      const im = new THREE.InstancedMesh(geos.bananas, mats.solid, bananas.length);
+      im.name = 'island-bananas';
+      im.boundingSphere = sphere.clone();
+      group.add(im);
+      isl.bananaIM = im;
+      writeBananas(isl);
+    }
+    if (isl.cave) {
+      if (isl.cave.crystals) {
+        const cm = new THREE.Mesh(isl.cave.crystals.build(), mats.crystal);
+        cm.name = 'island-crystals';
+        group.add(cm);
+        isl.disposables.push(cm.geometry);
+        isl.crystalMesh = cm;
+        isl.cave.crystals = null;
+      }
+      const lm = new THREE.Mesh(geos.loot, mats.solid);
+      lm.name = 'island-cave-loot';
+      lm.position.set(isl.cave.lx, isl.cave.ly, isl.cave.lz);
+      lm.rotation.y = isl.cave.lry;
+      lm.scale.setScalar(0.85);
+      group.add(lm);
+      isl.caveLoot = lm;
     }
     buildFoam(isl, rnd);
 
@@ -784,6 +880,111 @@
       }
     }
     isl.palms.push(palm);
+  }
+
+  // --- other trees (ROADMAP 7) ----------------------------------------------------------------------
+  function trunkBump(isl, x, z, y, r) { isl.T.bumps.push({ x, z, r, ir2: 1 / (r * r), y, h: 2.6, flat: true }); }
+  function buildBroadleaf(isl, b, leaf, rnd, sp) {
+    const R = (a, c) => a + (c - a) * rnd();
+    const H = R(3.3, 4.8), by = sp.h - 0.2;
+    b.geo(geos.cyl6, tr(sp.x, by + H * 0.5, sp.z, (rnd() - 0.5) * 0.12, rnd() * TAU, (rnd() - 0.5) * 0.12, 0.2, H, 0.2), 0x6e5236, 0.08, rnd);
+    const greens = [0x3f7f32, 0x4f9a3c, 0x356d2a, 0x5aa545];
+    const nB = 4 + Math.floor(rnd() * 3), top = by + H;
+    for (let k = 0; k < nB; k++) {
+      const a = rnd() * TAU, d = k === 0 ? 0 : R(0.7, 1.35), sc = R(1.0, 1.45);
+      leaf.geo(geos.ico0, tr(sp.x + Math.cos(a) * d, top + R(-0.35, 0.45), sp.z + Math.sin(a) * d, rnd(), rnd() * TAU, rnd(), sc, sc * 0.78, sc),
+        greens[Math.floor(rnd() * 4)], 0.1, rnd);
+    }
+    trunkBump(isl, sp.x, sp.z, sp.h, 0.32);
+    isl.trees.push({ kind: 'broadleaf', x: sp.x, y: sp.h, z: sp.z, ix: sp.x, iy: sp.h + 1.2, iz: sp.z, picked: false, it: null });
+  }
+  function buildPine(isl, b, leaf, rnd, sp) {
+    const R = (a, c) => a + (c - a) * rnd();
+    const H = R(5, 7.4), by = sp.h - 0.2;
+    b.geo(geos.cyl6, tr(sp.x, by + H * 0.32, sp.z, 0, rnd() * TAU, 0, 0.17, H * 0.64, 0.17), 0x5e4630, 0.08, rnd);
+    const greens = [0x2f5e34, 0x376b3b, 0x2a5530];
+    for (let k = 0; k < 4; k++) {
+      const y = by + H * (0.3 + k * 0.17), r = (1.6 - k * 0.33) * R(0.9, 1.1), h = 1.7 - k * 0.2;
+      leaf.geo(geos.cone5, tr(sp.x, y + h * 0.5, sp.z, 0, rnd() * TAU, 0, r, h, r), greens[k % 3], 0.08, rnd);
+    }
+    trunkBump(isl, sp.x, sp.z, sp.h, 0.3);
+    isl.trees.push({ kind: 'pine', x: sp.x, y: sp.h, z: sp.z, ix: sp.x, iy: sp.h + 1.2, iz: sp.z, picked: false, it: null });
+  }
+  function buildBanana(isl, b, leaf, rnd, sp) {
+    const R = (a, c) => a + (c - a) * rnd();
+    const H = R(2.2, 3), by = sp.h - 0.15, top = by + H;
+    b.geo(geos.cyl6, tr(sp.x, by + H * 0.5, sp.z, 0, rnd() * TAU, 0, 0.15, H, 0.15), 0x7c8a4a, 0.1, rnd);
+    const n = 6 + Math.floor(rnd() * 3), greens = [0x5fa83c, 0x6fbb46, 0x4f9433];
+    for (let k = 0; k < n; k++) {
+      const a = k / n * TAU + rnd() * 0.3;
+      leaf.geo(geos.ico0, tr(sp.x + Math.cos(a) * 0.95, top + 0.15, sp.z + Math.sin(a) * 0.95, 0, -a, -0.4 - rnd() * 0.25, 1.15, 0.05, 0.33),
+        greens[k % 3], 0.08, rnd);
+    }
+    const ba = rnd() * TAU;
+    trunkBump(isl, sp.x, sp.z, sp.h, 0.26);
+    isl.trees.push({ kind: 'banana', x: sp.x, y: sp.h, z: sp.z, ix: sp.x, iy: sp.h + 1.2, iz: sp.z, picked: false, it: null,
+      bx: sp.x + Math.cos(ba) * 0.24, by: top - 0.3, bz: sp.z + Math.sin(ba) * 0.24 });
+  }
+  function writeBananas(isl) {
+    const im = isl.bananaIM;
+    if (!im) return;
+    let k = 0;
+    for (const t of isl.trees) {
+      if (t.kind !== 'banana') continue;
+      if (t.picked) im.setMatrixAt(k, ZERO_M);
+      else im.setMatrixAt(k, _m.compose(_v.set(t.bx, t.by, t.bz), _q.identity(), _s.set(1, 1, 1)));
+      k++;
+    }
+    im.instanceMatrix.needsUpdate = true;
+  }
+  // A small cave: a ring of big boulders with a roof, the opening facing the beach, glowing
+  // crystals and a chest inside. The walls are ground bumps (you cannot walk through them).
+  function buildCave(isl, b, rnd, sp) {
+    const R = (a, c) => a + (c - a) * rnd();
+    const cx = sp.x, cz = sp.z, base = sp.h;
+    const out = Math.atan2(sp.z, sp.x);              // opening towards the sea
+    const RAD = 2.5, n = 12, gap = 0.62;
+    const rockCol = (y0) => (x, y, z, o) => { o.setHex(y > y0 + 2.6 ? 0x7f7a6e : 0x8d887c); if (y < base + 0.25) o.setHex(0x6b665a); };
+    for (let k = 0; k < n; k++) {
+      const a = out + gap + (k / (n - 1)) * (TAU - 2 * gap);
+      const x = cx + Math.cos(a) * RAD, z = cz + Math.sin(a) * RAD;
+      for (let layer = 0; layer < 2; layer++) {
+        const sc = R(0.95, 1.25) * (layer ? 0.9 : 1);
+        const g = jitterGeo(new THREE.IcosahedronGeometry(1, 1), rnd, 0.18);
+        const k2 = layer ? 0.9 : 1;
+        b.geo(g, tr(cx + Math.cos(a) * RAD * k2, base + 0.55 + layer * 1.45, cz + Math.sin(a) * RAD * k2, rnd(), rnd() * TAU, rnd(), sc, sc, sc),
+          rockCol(base), 0.08, rnd);
+        g.dispose();
+      }
+      isl.T.bumps.push({ x, z, r: 0.95, ir2: 1 / (0.95 * 0.95), y: base, h: 3.2, flat: true });
+    }
+    // roof and the lintel over the opening
+    for (let k = 0; k < 3; k++) {
+      const g = jitterGeo(new THREE.IcosahedronGeometry(1, 1), rnd, 0.16);
+      const a = k / 3 * TAU + rnd();
+      b.geo(g, tr(cx + Math.cos(a) * 0.9, base + 3.15, cz + Math.sin(a) * 0.9, rnd() * 0.3, rnd() * TAU, rnd() * 0.3, R(1.7, 2.1), R(0.65, 0.85), R(1.7, 2.1)),
+        rockCol(base), 0.08, rnd);
+      g.dispose();
+    }
+    {
+      const g = jitterGeo(new THREE.IcosahedronGeometry(1, 1), rnd, 0.12);
+      b.geo(g, tr(cx + Math.cos(out) * RAD * 0.92, base + 2.75, cz + Math.sin(out) * RAD * 0.92, 0, -out + Math.PI / 2, 0, 1.7, 0.6, 0.8), rockCol(base), 0.08, rnd);
+      g.dispose();
+    }
+    // dark floor inside
+    b.geo(geos.cyl6, tr(cx, base + 0.03, cz, 0, rnd(), 0, RAD * 0.92, 0.05, RAD * 0.92), 0x3b342c, 0.05, rnd);
+    isl.T.bumps.push({ x: cx, z: cz, r: RAD * 0.9, ir2: 1 / (RAD * RAD * 0.81), y: base, h: 0.055, flat: true });
+    // glowing crystals along the back wall
+    const cb = new Builder();
+    for (let k = 0; k < 6; k++) {
+      const a = out + Math.PI + (rnd() - 0.5) * 2.2, d = RAD * R(0.55, 0.75);
+      const oct = new THREE.OctahedronGeometry(1, 0);
+      cb.geo(oct, tr(cx + Math.cos(a) * d, base + R(0.15, 0.5), cz + Math.sin(a) * d, (rnd() - 0.5) * 0.6, rnd() * TAU, (rnd() - 0.5) * 0.6, R(0.08, 0.14), R(0.22, 0.45), R(0.08, 0.14)),
+        rnd() < 0.5 ? 0x9fe8ff : 0xd6a8ff, 0.05, rnd);
+      oct.dispose();
+    }
+    const lx = cx - Math.cos(out) * 1.1, lz = cz - Math.sin(out) * 1.1;
+    isl.cave = { x: cx, y: base, z: cz, out, lx, ly: base + 0.05, lz, lry: -out + Math.PI / 2, looted: false, k: 1, it: null, crystals: cb };
   }
 
   // --- rocks ------------------------------------------------------------------------------------
@@ -1324,6 +1525,47 @@
     return true;
   }
 
+  function pickTree(isl, t) {
+    if (t.picked || !isl.alive) return false;
+    let got = {};
+    if (t.kind === 'banana') {
+      const n = G.randInt(2, 3), left = give('banan', n);
+      if (left >= n) return false;
+      got = { banan: n - left };
+    } else {
+      const nP = t.kind === 'pine' ? G.randInt(2, 3) : G.randInt(1, 2), nL = t.kind === 'pine' ? 0 : G.randInt(1, 2);
+      const lp = give('prkno', nP), ll = nL ? give('list', nL) : 0;
+      if (lp >= nP && ll >= nL) return false;
+      got = { prkno: nP - lp, list: nL - ll };
+    }
+    t.picked = true;
+    if (t.kind === 'banana') writeBananas(isl);
+    worldPos(isl, t.ix, t.iy + 0.6, t.iz, _v2);
+    fx('debris', _v2, t.kind === 'banana' ? 0xf2d95a : 0x6fae4a, 12);
+    fx('sparkle', _v2, 0x9bd35a);
+    G.sfx('whoosh', { position: _v2, volume: 0.6 });
+    G.sfx('pickup', { position: _v2 });
+    G.events.emit('island:gathered', { island: isl, kind: t.kind, items: got });
+    return true;
+  }
+  function searchCave(isl) {
+    const c = isl.cave;
+    if (!c || c.looted || !isl.alive) return false;
+    const nZ = G.randInt(10, 25), nK = G.randInt(2, 4);
+    const lz = give('zlato', nZ), lk = give('kov', nK);
+    if (lz >= nZ && lk >= nK) return false;
+    const extra = G.pick([['koule', G.randInt(3, 6)], ['provaz', 3], ['kelimek_sladky', 1], ['kamen', 4]]);
+    give(extra[0], extra[1]);
+    c.looted = true;
+    if (isl.caveLoot) isl.caveLoot.visible = false;
+    worldPos(isl, c.lx, c.ly + 0.4, c.lz, _v2);
+    fx('sparkle', _v2, 0xffd76a);
+    G.sfx('coins', { position: _v2, volume: 0.9 });
+    G.notify('V jeskyni jsi našel poklad! ' + (nZ - lz) + '× Zlaté mince, ' + (nK - lk) + '× Kovový šrot a ještě něco navíc.', 'good');
+    G.events.emit('island:gathered', { island: isl, kind: 'cave', items: { zlato: nZ - lz, kov: nK - lk } });
+    return true;
+  }
+
   function addInteractables(isl) {
     const avail = () => isl.alive && isl.rise >= 1 && isl.playerShore < 12;
     for (const palm of isl.palms) {
@@ -1345,6 +1587,27 @@
         range: 3.5, size: 0.6,
       });
       isl.its.push(rock.it);
+    }
+    for (const t of isl.trees) {
+      t.it = G.interaction.add({
+        getPosition: (out) => worldPos(isl, t.ix, t.iy, t.iz, out),
+        label: t.kind === 'banana' ? LABEL_BANANA : LABEL_TREE,
+        onInteract: () => { pickTree(isl, t); },
+        enabled: () => !t.picked && avail(),
+        range: 3.3, size: 0.5,
+      });
+      isl.its.push(t.it);
+    }
+    const cv = isl.cave;
+    if (cv) {
+      cv.it = G.interaction.add({
+        getPosition: (out) => worldPos(isl, cv.lx, cv.ly + 0.4, cv.lz, out),
+        label: LABEL_CAVE,
+        onInteract: () => { searchCave(isl); },
+        enabled: () => !cv.looted && avail(),
+        range: 3.2, size: 0.8,
+      });
+      isl.its.push(cv.it);
     }
     const w = isl.wreck;
     if (w) {
@@ -1632,6 +1895,7 @@
         near: isl.near ? 1 : 0, visited: isl.visited ? 1 : 0,
         lat: Number.isFinite(isl.lat) ? Math.round(isl.lat * 10) / 10 : undefined,
         palms: picked, rocks: isl.rocks.map((r) => r.uses), wreck: isl.wreck && isl.wreck.looted ? 1 : 0,
+        trees: isl.trees.reduce((m, t, i) => (t.picked ? m | (1 << i) : m), 0), cave: isl.cave && isl.cave.looted ? 1 : 0,
       });
     }
     return out;
@@ -1673,6 +1937,10 @@
         isl.wreck.k = 0;
         if (isl.lootMesh) isl.lootMesh.visible = false;
       }
+      const tp = Number(s.trees) || 0;
+      isl.trees.forEach((t, i) => { if (tp & (1 << i)) t.picked = true; });
+      writeBananas(isl);
+      if (s.cave && isl.cave) { isl.cave.looted = true; if (isl.caveLoot) isl.caveLoot.visible = false; }
       writeFronds(isl); writeCocos(isl); writePiles(isl, 0);
     }
   }
@@ -1795,6 +2063,8 @@
       hillHeight: Math.round(isl.hillHeight * 10) / 10,
       palms: isl.palms.length, coconutPalms: isl.palms.filter((p) => p.coco).length, rocks: isl.rocks.length,
       wreck: !!isl.wreck, hut: !!isl.hut, flag: !!isl.flag, turtles: isl.turtles,
+      size: isl.size, shape: isl.shape, theme: isl.theme, cave: !!isl.cave,
+      trees: isl.trees.reduce((o, t) => { o[t.kind] = (o[t.kind] || 0) + 1; return o; }, {}),
       near: isl.near, visited: isl.visited, decor: isl.decor,
     };
   }

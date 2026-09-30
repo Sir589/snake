@@ -40,6 +40,8 @@
   // Food (raw → grill → cooked)
   D('kokos', 'Kokos', '🥥', 10, 'food', '#7a5230', 'Kokos z palmy. Zasytí a trochu zažene žízeň.',
     { tool: 'consume', food: food(12, 18, 0) });
+  D('banan', 'Banán', '🍌', 10, 'food', '#f2d24b', 'Sladký banán z ostrova. Zasytí a přidá trochu zdraví.',
+    { tool: 'consume', food: food(14, 5, 3) });
   D('sardinka', 'Syrová sardinka', '🐟', 10, 'food', '#a9bfcf', 'Malá syrová rybka. Lepší ji upéct na grilu.',
     { tool: 'consume', food: food(6, 0, -2), cookTo: 'sardinka_pecena' });
   D('makrela', 'Syrová makrela', '🐟', 10, 'food', '#5f93ad', 'Syrová makrela. Na grilu z ní bude dobrá večeře.',
