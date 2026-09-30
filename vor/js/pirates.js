@@ -69,7 +69,7 @@
   function wrapAngle(a) { while (a > PI) a -= TAU; while (a < -PI) a += TAU; return a; }
   function angDiff(a, b) { return wrapAngle(b - a); }
   function dampAngle(a, b, k, dt) { return a + angDiff(a, b) * (1 - Math.exp(-k * dt)); }
-  function btnL() { return G.input && G.input.touchMode ? '●' : 'LMB'; }
+  function btnL() { return G.input && G.input.touchMode ? '●' : 'Levé tlačítko'; }
   function plural(n, one, few, many) { return n === 1 ? one : n >= 2 && n <= 4 ? few : many; }
   function nightK() {
     const W = G.world;

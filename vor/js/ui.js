@@ -645,9 +645,14 @@
     if (cur !== lastCur || (cur && t > labelT)) {
       lastCur = cur;
       labelT = t + 100;
-      let label = '';
-      if (cur) { try { label = IT.labelOf(cur) || ''; } catch (e) { label = ''; } }
+      let label = '', passive = false;
+      if (cur) {
+        try { label = IT.labelOf(cur) || ''; } catch (e) { label = ''; }
+        // information-only labels (e.g. 'Čistí se… 12 s') get no [E] key cap
+        try { passive = typeof cur.passive === 'function' ? !!cur.passive() : !!cur.passive; } catch (e) { passive = false; }
+      }
       showEl(E.prompt, !!label);
+      setCls(E.prompt, 'passive', passive);
       if (label) setText(E['prompt-text'], label);
     }
     setCls(E.crosshair, 'target', !!cur);
@@ -1135,7 +1140,7 @@
   function quickMove(grid, i) {
     const inv = G.inventory;
     const a = gridArr(grid);
-    if (!inv || !a || !a[i]) return;
+    if (!inv || !a || !a[i] || typeof inv.moveToRange !== 'function') return;
     let moved = 0;
     if (storage) {
       const sa = arrOf(storage);
@@ -1151,7 +1156,7 @@
   function splitAt(grid, i) {
     const inv = G.inventory;
     const a = gridArr(grid);
-    if (!inv || !a || !a[i] || a[i].count < 2) { sfx('error', 0.3); return; }
+    if (!inv || typeof inv.split !== 'function' || !a || !a[i] || a[i].count < 2) { sfx('error', 0.3); return; }
     const ok = inv.split(a, i);
     sfx(ok ? 'ui_click' : 'error', 0.4);
     invDirty = true;
@@ -1207,19 +1212,21 @@
     const hit = slotFromEvent(e);
     if (!hit) {
       // backdrop click (outside the panel) puts a lifted stack back
-      if (held && !e.target.closest('.panel')) { held = null; invDirty = true; }
+      if (held && !e.target.closest('.panel')) { held = null; invDirty = true; renderPanel(); }
       return;
     }
     e.preventDefault();
     if (e.button === 2) {
       if (held) dropHeldOn(hit.grid, hit.i, 1);
       else splitAt(hit.grid, hit.i);
+      renderPanel();
       return;
     }
     if (e.button !== 0) return;
-    if (e.shiftKey) { quickMove(hit.grid, hit.i); return; }
-    if (held) { dropHeldOn(hit.grid, hit.i); return; }
-    if (pickUp(hit.grid, hit.i)) drag = { x: e.clientX, y: e.clientY, moved: false };
+    if (e.shiftKey) quickMove(hit.grid, hit.i);
+    else if (held) dropHeldOn(hit.grid, hit.i);
+    else if (pickUp(hit.grid, hit.i)) drag = { x: e.clientX, y: e.clientY, moved: false };
+    renderPanel();                 // immediate feedback, do not wait for the next HUD tick
   }
   function onPointerMove(e) {
     pointerX = e.clientX; pointerY = e.clientY;
@@ -1236,6 +1243,7 @@
     const hit = slotFromPoint(e.clientX, e.clientY);
     if (hit && !(hit.grid === held.grid && hit.i === held.i)) dropHeldOn(hit.grid, hit.i);
     else if (!hit) { held = null; invDirty = true; }
+    renderPanel();
   }
 
   // ---------------------------------------------------------------------------
@@ -1365,6 +1373,7 @@
     }
     setCraftSel(id);
     invDirty = true;
+    renderPanel();
     return ok;
   }
   function moveCraftSel(dir) {
@@ -1537,6 +1546,7 @@
       const hit = slotFromEvent(e);
       if (!hit) return;
       if (held) dropHeldOn(hit.grid, hit.i); else pickUp(hit.grid, hit.i);
+      renderPanel();
     });
     layer.addEventListener('dblclick', (e) => {
       const hit = slotFromEvent(e);
@@ -1548,6 +1558,7 @@
       eatHeld();
       held = null;
       invDirty = true;
+      renderPanel();
     });
     layer.addEventListener('pointerover', (e) => {
       const hit = slotFromEvent(e);
@@ -1571,6 +1582,7 @@
       sfx(n ? 'pickup' : 'error', 0.5);
       if (n) G.notify('Přesunuto do batohu: ' + n + ' ks', 'good');
       invDirty = true;
+      renderPanel();
     });
     E.detail.addEventListener('click', (e) => {
       const b = e.target.closest('button');

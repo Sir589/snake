@@ -124,7 +124,7 @@
     bump();
     if (!quiet && G.state === 'playing') {
       G.notify('Úkol splněn: ' + g.text, 'good');
-      G.sfx('coins');
+      // (audio.js plays its own chime on goal:done)
       G.events.emit('goal:done', { id: g.id, n: g.n, text: g.text, final: g.final });
     }
     return true;

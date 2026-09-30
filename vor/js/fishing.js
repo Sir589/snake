@@ -86,8 +86,8 @@
   }
   function lightK() { const W = G.world; return W && Number.isFinite(W.lightLevel) ? W.lightLevel : 1; }
   function isNight() { const W = G.world; return !!(W && typeof W.isNight === 'function' && W.isNight()); }
-  function btnL() { return G.input && G.input.touchMode ? '●' : 'LMB'; }
-  function btnR() { return G.input && G.input.touchMode ? '◐' : 'RMB'; }
+  function btnL() { return G.input && G.input.touchMode ? '●' : 'Levé tlačítko'; }
+  function btnR() { return G.input && G.input.touchMode ? '◐' : 'Pravé tlačítko'; }
   function inWater() { const P = G.player; return !!(P && P.inWater); }
   function sfx(name, pos, vol) {
     const o = {};
@@ -1043,8 +1043,8 @@
       if (msgT > 0) return msg;
       if (inWater()) return 'Ve vodě nemůžeš nahazovat.';
       switch (st) {
-        case 'idle': return 'Podrž ' + btnL() + ' a pusť: Nahodit udici';
-        case 'charging': return 'Pusť ' + btnL() + ': Nahodit · ' + btnR() + ': Zrušit';
+        case 'idle': return 'Podrž ' + btnL().toLowerCase() + ' a pusť: Nahodit udici';
+        case 'charging': return 'Pusť ' + btnL().toLowerCase() + ': Nahodit · ' + btnR() + ': Zrušit';
         case 'waiting': return 'Čekej na záběr… pak rychle klikni! · ' + btnR() + ': Navinout';
         case 'bite': return 'Záběr! Klikni!';
         default: return '';

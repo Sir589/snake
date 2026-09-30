@@ -1018,7 +1018,11 @@
     const d = SFX[name];
     if (!d || !canPlay()) return false;
     const now = ctx.currentTime, st = d.st;
-    if (!d.pri && (now - st.last < d.gap || st.n >= d.max || voices >= MAX_VOICES)) return false;
+    // priority sounds (cannon, explosion, thunder…) get a little headroom but are still capped,
+    // so a burst of 40 explosions can never pile up into a clipping wall of noise
+    if (d.pri) {
+      if (now - st.last < Math.min(d.gap, 0.02) || st.n >= d.max + 2 || voices >= MAX_VOICES + 8) return false;
+    } else if (now - st.last < d.gap || st.n >= d.max || voices >= MAX_VOICES) return false;
     let vol = d.vol;
     if (o && o.volume != null) { const x = +o.volume; vol *= Number.isFinite(x) ? Math.max(0, Math.min(x, 2)) : 1; }
     let pan = o && Number.isFinite(o.pan) ? o.pan : 0;

@@ -202,7 +202,7 @@ export default async (page, h) => {
   await gw(0.5);
   s = await h.eval(() => ({ seated: G.pirates.seated, ov: !!G.player.controlOverride, blocked: G.interaction.blocked, hint: G.hud.toolHint, cross: G.hud.crosshair }));
   ok(s.seated && s.ov && s.blocked, 'seated at the cannon: ' + JSON.stringify(s));
-  ok(/^LMB: Pal! · Koule: \d+ · E: Vstát$/.test(s.hint), 'cannon hint: ' + s.hint);
+  ok(/^Levé tlačítko: Pal! · Koule: \d+ · E: Vstát$/.test(s.hint), 'cannon hint: ' + s.hint);
   // mouse aims within the limits
   await h.look(-5000, 0);
   await gw(0.15);

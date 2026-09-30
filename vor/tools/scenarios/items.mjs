@@ -319,24 +319,26 @@ export default async (page, h) => {
   if (!canInput) {
     note('skipping hotbar input test (game not in a playable state: another module blocks input)');
   } else {
+    // headless SwiftShader frames can take a second or more: poll instead of fixed waits
+    const waitSel = async (want, what) => {
+      let sel = -1;
+      for (const t0 = Date.now(); Date.now() - t0 < 6000;) {
+        sel = await h.eval(() => G.inventory.selected);
+        if (sel === want) return;
+        await h.wait(50);
+      }
+      throw new Error('[items] ' + what + ' should select slot ' + want + ', got ' + sel);
+    };
     await h.key('Digit3');
-    await h.wait(120);
-    let sel = await h.eval(() => G.inventory.selected);
-    if (sel !== 2) throw new Error('[items] Digit3 should select slot 2, got ' + sel);
+    await waitSel(2, 'Digit3');
     await page.mouse.move(640, 360);
     await page.mouse.wheel(0, 120);
-    await h.wait(150);
-    sel = await h.eval(() => G.inventory.selected);
-    if (sel !== 3) throw new Error('[items] wheel down should select slot 3, got ' + sel);
+    await waitSel(3, 'wheel down');
     await h.wait(100);
     await page.mouse.wheel(0, -120);
-    await h.wait(150);
-    sel = await h.eval(() => G.inventory.selected);
-    if (sel !== 2) throw new Error('[items] wheel up should select slot 2, got ' + sel);
+    await waitSel(2, 'wheel up');
     await h.key('Digit1');
-    await h.wait(120);
-    sel = await h.eval(() => G.inventory.selected);
-    if (sel !== 0) throw new Error('[items] Digit1 should select slot 0, got ' + sel);
+    await waitSel(0, 'Digit1');
     note('hotbar input ok');
   }
 

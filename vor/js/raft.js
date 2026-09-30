@@ -79,8 +79,8 @@
   }
   function plural(n, one, few, many) { return n === 1 ? one : n >= 2 && n <= 4 ? few : many; }
   function itemsText(n) { return n + ' ' + plural(n, 'věc', 'věci', 'věcí'); }
-  function btnL() { return G.input && G.input.touchMode ? '●' : 'LMB'; }
-  function btnR() { return G.input && G.input.touchMode ? '◐' : 'RMB'; }
+  function btnL() { return G.input && G.input.touchMode ? '●' : 'Levé tlačítko'; }
+  function btnR() { return G.input && G.input.touchMode ? '◐' : 'Pravé tlačítko'; }
   function itemName(id) { return G.items && G.items.name ? G.items.name(id) : String(id); }
   function itemColor(id, fallback) { const d = G.items && G.items.def(id); return d && d.color ? d.color : fallback; }
   function smooth01(t) { t = G.clamp(t, 0, 1); return t * t * (3 - 2 * t); }
@@ -2056,8 +2056,9 @@
     const a = new THREE.Mesh(w.build(), M.atlas), b = new THREE.Mesh(m.build(), M.metal);
     pivot.add(a, b);
     vm.add(pivot);
-    vm.rotation.set(-0.18, 0.25, 0.2);
-    vm.scale.setScalar(0.85);
+    vm.position.set(0.02, -0.07, 0);
+    vm.rotation.set(-0.5, 0.3, 0.22);     // tilted forward so the head sits low-right, clear of the hint text
+    vm.scale.setScalar(0.72);
     hammer.viewModel = vm;
     hammer.pivot = pivot;
   }

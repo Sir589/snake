@@ -466,9 +466,99 @@ Respect `prefers-reduced-motion`. Visible keyboard focus on buttons.
 
 ## 9. Testing
 
-`node vor/tools/smoke.mjs [--seconds N] [--scenario path.mjs] [--shot out.png]` serves `vor/`
-over http, opens it in headless Chromium (SwiftShader WebGL), starts a new game, runs the
-optional scenario (`export default async (page, h) => {...}`; `h.key(code, ms)`,
-`h.hold(code)`, `h.release(code)`, `h.mouse(button, ms)`, `h.eval(fn)`, `h.wait(ms)`,
-`h.shot(path)`), and prints JSON: page errors, console errors, final state, fps.
+`node vor/tools/smoke.mjs [--seconds N] [--scenario path.mjs] [--shot out.png] [--menu] [--mobile] [--probe]`
+serves `vor/` over http, opens it in headless Chromium (SwiftShader WebGL), starts a new game
+(unless `--menu`), runs the optional scenario (`export default async (page, h) => {...}`;
+`h.key(code, ms)`, `h.hold(code)`, `h.release(code)`, `h.mouse(button, ms)`, `h.look(dx, dy)`,
+`h.tap(x, y)`, `h.eval(fn, arg)`, `h.wait(ms)`, `h.shot(path)`, `h.mobile`, `h.viewport`), and prints
+JSON: page errors, console errors, final state, fps. Exit code 1 on any error or thrown assertion.
+- `--mobile`: 390×844 viewport with `isMobile` + `hasTouch` (touch controls switch on).
+- `--probe`: wraps the module API objects in Proxies and reports reads of members that do not
+  exist (`report.probe.missing`, with the caller) and sfx names audio.js does not know.
+
+`node vor/tools/run-all.mjs [--only a,b] [--probe] [--jobs N]` runs every scenario in
+`tools/scenarios/` through smoke.mjs one after another and prints a pass/fail table (exit 1 on
+any failure). A scenario may `export const smokeArgs = ['--menu' | '--mobile']`. Shared helpers
+(`until`, `gameWait`, `aimAt` via real look input, `selectItem`, `shot`, `sceneStats`) live in
+`tools/scenario-lib.mjs`. Headless SwiftShader renders only a few frames per second and `dt` is
+capped at 0.05 s, so game time runs at roughly 0.1–0.5× real time: scenarios wait for conditions
+or for game time, never for fixed real-time delays. Screenshots go to `$SHOTS`.
 Debug hooks (`G.debug.*`) exist so scenarios can jump straight to pirates, storms, islands, etc.
+
+## 10. Integration addenda (what the modules actually expose beyond §6)
+
+These are part of the contract now; other modules may rely on them.
+
+- **Hand / camera.** `G.player.hand` (THREE.Group on the camera, lower right). player.js adds a
+  handler's `viewModel` to it on equip and removes it on unequip; handlers animate their own
+  view model. World-space rope/line starts: `G.player.hand.getWorldPosition(v)` (or a tip Object3D
+  inside the view model). In `G.state === 'menu'` world.js owns the camera (orbit around the raft);
+  player.js owns it while playing/paused/dead; an active `controlOverride` owns it while set.
+- **Item defs.** `tool` is also set to `'consume'` on foods/drinks and `'place'` on placeables
+  (dispatch gives the same result either way). Extras: `g` (grammatical gender of durable items),
+  `cookTo`, `purifyTo`, `color` is a CSS hex string. `food` always has numeric hunger/thirst/health.
+- **G.items / G.inventory extras.** `list`, `recipe(id)`, `icon(id)`, `stackOf(id)`, `kindNames`,
+  `needsText(needs)`; each recipe has a Czech `name`. Inventory: `SIZE`, `HOTBAR`, `version`,
+  `removeAll(needs)`, `missing(needs)`, `countIn`, `roomFor`, `moveToRange`, `split`, `freeSlots`,
+  `firstIndexOf`, `sanitize(saved, n)`; `transfer(from, i, to, j?, count?)` → bool;
+  `select(i, silent?)`; `add(id, n, source = 'loot')`; `replaceSelected(id, source?)` (a single
+  held item is swapped in place, otherwise the new item goes to the inventory or floats via
+  `G.debris.spawnItem`); `damageSelected(n)` → true when the tool broke; `takeAll(storage, source?)`
+  → moved count. Modules may write `G.inventory.slots` directly and then emit `inventory:changed`.
+  Hotbar input is ignored while `G.interaction.blocked`.
+- **G.world / G.fx extras.** `sunDir`, `moonDir`, `lightLevel` (0.22 night … 1 day), `underwater`,
+  `hemi`, `stormActive()`, `windAngle`, `addShallow(target, radius, strength)` / `removeShallow(h)`
+  (turquoise shallows around islands; use this instead of transparent discs). `G.fx.fire`,
+  `steam`, `ripple`, `emit({...})`, `clear()`; fx are visual only (callers play their own sfx).
+  The ocean is transparent (renderOrder −1, depthWrite on): transparent things *under* water need
+  renderOrder < −1. `sun.castShadow` stays true (never toggle it). Storm damage: world.js hits a
+  random edge tile for 5–9 every 14–24 s while `storm > 0.65`; raft.js adds its own 8-damage hit
+  only when world.js has not hit the raft in the last 14 s.
+- **G.raft extras.** `getTile(i, j)`, `isEdge`, `structureAt(x, z)`, `canBuildAt(i, j)`,
+  paid `build/repair/reinforce`, `destroyTile`, `speed()`, `COST`, `MAX_SPAN` (12),
+  `structureDefs`. Structure defs may add `data()`, `frame(s, dt)`, `contents(s)`, `interactY` /
+  `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
+  `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
+  a detached dummy `s.tile`), so it must be side-effect free. `rotation` is an integer quarter turn.
+  `placeStructure` and `addTile` emit the build events themselves (not during reset/load).
+  Interactables made by raft.js carry `.structure` and optionally `.passive()`: ui.js then shows
+  the label without the [E] key cap.
+- **G.player extras.** `hand`, `right(out)`, `groundProvider`, `sprinting`, `climbing`, `god`,
+  `maxHealth`, `lastDamageSource`, `controlOverride`, `teleport(x, z)`, `canClimb()`,
+  `applyFood(id)`. `eat(id)` removes the item itself (held stack first, else the inventory) and
+  gives cups back; callers must not remove it. `damage(amount, source, dir)` → bool. Damage sources:
+  `shark`, `cannon`, `pirate`, `hunger`, `thirst`, `food`, `saltwater`, `storm`/`lightning`; the
+  death reason is picked from the source. `groundKind` is `'water'` while swimming.
+- **G.debris extras.** `list` items `{type, id, count, position, alive, collected, hooked,
+  attached, flying, …}`, `spawnItem(id, n, pos?)` (moved off the deck), `collect(d, storage?,
+  source?)` → bool, `remove`, `clear`, `hookState()`, `types`, `MAX_ALIVE`. Debris is not saved.
+- **G.fishing / G.shark extras.** `G.fishing.state`, `bobber`, `forceBite()`, `cancel()`,
+  `isCast()`, `schools`. `G.shark.state` also `'away'` (before 90 s); `phase`, `hp`, `position`,
+  `target` (the combat target), `present()`, `alive()`, `startAttack()`.
+- **G.pirates extras.** `boarders`, `boat`, `seated`, `sit/stand/fire`, `aimAt`, `predict`,
+  `launchBoat`, `shipFire`, `sinkShip`, `checkNow`. While seated at the cannon pirates.js owns the
+  camera (player control override), sets `G.interaction.blocked`, and swallows Escape (capture
+  phase) to stand up instead of pausing.
+- **G.islands extras.** Island objects `{id, name, seed, position, radius, group, provider, palms,
+  rocks, wreck, …}`; `velocity`, `remove`, `heightAt(x, z)`, `shoreDistance(isl, x, z)`,
+  `closestApproach`, `timeToNext`; `nearest(pos?)`. A decorative island sits in view in the menu.
+- **G.audio extras.** `play`, `has(name)`, `setMuted`, `toggleMute`, `muted` (saved as
+  `G.settings.muted`), `names`. Extra sound names: `goal`, `fanfare`, `bell`, `lap`, `gull`,
+  `creak`. audio.js itself plays `goal` on `goal:done`, `fanfare` on `pirates:sunk` and `bell` on
+  `world:day` — other modules do not add sounds for those events.
+- **G.ui / G.goals extras.** `G.ui.toggleHelp()`, `openSettings()`, `tab`, `storageOpen`,
+  `heldSlot()`. `G.goals.get(id)`, `index`, `doneCount`, `allDone`, `hintOf(g)`, `progressText`,
+  `complete(id)`, `version`. Goal ids: prkna, kladivo, zaklady, kelimek, cisticka, ryba, gril,
+  ostep, plachta, ostrov, kanon, lod, dny. All goals are tracked at once (out of order counts).
+- **G.touch.** `{enabled, visible, enable(), lookGain()}`; body classes `touch-mode` /
+  `touch-active`; an extra rotate button appears while a placeable is held.
+- **Extra events.** `item:broken {id, index}`, `storage:changed {slots}`, `cup:filled {id}`,
+  `island:gathered {island, kind, items}`, `cannon:fired {player}`. Payload supersets:
+  `debris:collected {type, id, count, source, storage}`, `island:near {island, name, distance}`,
+  `island:visited {island, name}`, `structure:removed {type, refund}`, `purify:done {id}`,
+  `pirate:killed {cause, gold, x, z}`, `pirates:sighted {x, z}`, `pirates:boarding {count}`,
+  `pirates:sunk {x, z}`, `goal:done {id, n, text, final}`, `shark:attack {target, tile?}`.
+  Extra `item:gained` sources: `sea` (filled cup), `return` (empty cup back), `replace`,
+  `storage` (chest "Vzít vše"), `debug`.
+- **Player-facing wording.** Mouse buttons are named in Czech in hints (`Levé tlačítko`,
+  `Pravé tlačítko`); in touch mode they become ● / ◐.

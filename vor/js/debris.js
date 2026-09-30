@@ -181,8 +181,8 @@
     if (G.camera) { G.camera.getWorldPosition(out); out.y -= G.C.PLAYER_HEIGHT; return out; }
     return out.set(0, 0, 0);
   }
-  function btnL() { return G.input && G.input.touchMode ? '●' : 'LMB'; }
-  function btnR() { return G.input && G.input.touchMode ? '◐' : 'RMB'; }
+  function btnL() { return G.input && G.input.touchMode ? '●' : 'Levé tlačítko'; }
+  function btnR() { return G.input && G.input.touchMode ? '◐' : 'Pravé tlačítko'; }
   function itemDef(id) { return G.items && typeof G.items.def === 'function' ? G.items.def(id) : null; }
   function itemName(id) { const d = itemDef(id); return d ? d.name : String(id); }
   function sfx(name, pos, volume) {
@@ -1538,11 +1538,11 @@
   function buildHint() {
     const L = btnL(), Rb = btnR();
     switch (hook.state) {
-      case 'charging': return 'Pusť ' + L + ': hodit hák · ' + Rb + ': zrušit';
+      case 'charging': return 'Pusť ' + L.toLowerCase() + ': hodit hák · ' + Rb + ': zrušit';
       case 'flying': return Rb + ': zrušit';
-      case 'water': return 'Drž ' + L + ': navíjet · ' + Rb + ': zrušit';
+      case 'water': return 'Drž ' + L.toLowerCase() + ': navíjet · ' + Rb + ': zrušit';
       case 'returning': return '';
-      default: return 'Drž ' + L + ' a pusť: hodit hák';
+      default: return 'Drž ' + L.toLowerCase() + ' a pusť: hodit hák';
     }
   }
 

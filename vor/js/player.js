@@ -129,7 +129,7 @@
   function raftOK() { const R = G.raft; return R && typeof R.tileAt === 'function' ? R : null; }
   function deckY() { const R = G.raft; return R && typeof R.deckY === 'function' ? R.deckY() : G.C.DECK_Y; }
   function tileAtCell(i, j) { const R = raftOK(); return R ? R.tileAt((i + 0.5) * TILE, (j + 0.5) * TILE) : null; }
-  function btnL() { return G.input && G.input.touchMode ? '●' : 'LMB'; }
+  function btnL() { return G.input && G.input.touchMode ? '●' : 'Levé tlačítko'; }
   function btnJump() { return G.input && G.input.touchMode ? '⤒' : 'Mezerník'; }
   function itemDef(id) { return id && G.items && typeof G.items.def === 'function' ? G.items.def(id) : null; }
 
@@ -1024,7 +1024,7 @@
     }
     g.position.set(0, -0.035, 0);
     g.rotation.set(0.38, 0, -0.08);
-    g.scale.setScalar(1.15);
+    g.scale.setScalar(0.8);
     const outer = new THREE.Group();
     outer.add(g);
     return outer;
@@ -1422,6 +1422,7 @@
     // consume
     consume.viewModel = new THREE.Group();
     consume.viewModel.name = 'consume-view';
+    consume.viewModel.scale.setScalar(0.72);        // food held at a natural size in the hand
     consume.pivot = new THREE.Group();
     consume.viewModel.add(consume.pivot);
 

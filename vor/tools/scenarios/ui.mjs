@@ -19,11 +19,11 @@ const shot = async (page, name) => { await settle(page); await page.screenshot({
 
 export default async (page, h) => {
   const log = [];
-  // polls (SwiftShader frames can be slow) until the condition holds or 2.5 s pass
+  // polls (SwiftShader frames can be slow) until the condition holds or 8 s pass
   const check = async (label, fn, arg) => {
     let ok = false;
     const t0 = Date.now();
-    while (!(ok = await h.eval(fn, arg)) && Date.now() - t0 < 2500) await h.wait(60);
+    while (!(ok = await h.eval(fn, arg)) && Date.now() - t0 < 8000) await h.wait(60);
     log.push((ok ? 'ok   ' : 'FAIL ') + label);
     if (!ok) { console.error(log.join('\n')); throw new Error('UI check failed: ' + label); }
   };

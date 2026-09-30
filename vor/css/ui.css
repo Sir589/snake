@@ -402,6 +402,7 @@
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   animation: fade-up 0.18s ease-out;
 }
+.prompt.passive kbd { display: none; }
 .prompt kbd { color: var(--ink); background: var(--brass); border-color: #f4cd7b; border-bottom-color: #9c7327; }
 .toolhint {
   max-width: 100%;

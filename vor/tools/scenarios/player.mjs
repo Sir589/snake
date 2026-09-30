@@ -36,7 +36,7 @@ export default async (page, h) => {
   // Wait for `sec` seconds of *game* time (headless frames are slow; dt is clamped to 0.05 s).
   const gw = async (sec) => {
     const target = await h.eval((sec) => G.time + sec, sec);
-    await page.waitForFunction((t) => G.state !== 'playing' || G.paused || G.time >= t, target, { timeout: 60000 });
+    await page.waitForFunction((t) => G.state !== 'playing' || G.paused || G.time >= t, target, { timeout: 240000 });
   };
   const lookAt = (yaw, pitch) => h.eval(([y, p]) => { G.player.yaw = y; G.player.pitch = p; }, [yaw, pitch]);
 
@@ -311,7 +311,11 @@ export default async (page, h) => {
         return Math.min(0.6, 0.6 - (d - 8) * 0.35);                              // beach slope
       },
     });
-    window.__islMove = setInterval(() => { if (G.isPlaying()) window.__isl.c.x += 0.3 * 0.05; }, 50);
+    // the island drifts at 0.3 m/s of *game* time (headless frames are slow)
+    const t0 = G.time;
+    window.__islMove = setInterval(() => { window.__isl.c.x = 0.3 * (G.time - t0); }, 20);
+    const h0 = window.__isl.heightAt;
+    window.__isl.heightAt = (x, z) => { window.__isl.c.x = 0.3 * (G.time - t0); return h0.call(window.__isl, x, z); };
     G.debug.teleport(0, 20);             // in the sea, 20 m from the island centre
     G.player.yaw = Math.PI; G.player.pitch = 0;   // face +Z
   });
