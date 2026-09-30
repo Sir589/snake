@@ -42,7 +42,7 @@
   const B = (G.build = {
     types: TYPES,
     blocks: new Set(),
-    selected: 1,
+    selected: 0,
     rotOffset: 0,
     add: null, remove: null, heightAt: null, blocked: null, cellFree: null,
   });
@@ -624,7 +624,6 @@
   // The wrapped hammer tool
   // ---------------------------------------------------------------------------
   const wrap = {
-    viewModel: null,
     hintText: '',
     onEquip(slot) {
       equipped = true;
@@ -733,10 +732,8 @@
       makeGhost();
       buildPalette();
       hammer = G.tools.get('hammer');
-      if (hammer) {
-        wrap.viewModel = hammer.viewModel;
-        Object.defineProperty(wrap, 'viewModel', { get: () => hammer.viewModel, configurable: true });
-      }
+      // anything the wrapper doesn't define (viewModel, aim, cooldown, …) falls through to the raft hammer
+      if (hammer) Object.setPrototypeOf(wrap, hammer);
       G.tools.register('hammer', wrap);
       G.ground.add(groundProvider);
       G.events.on('tile:destroyed', onTileDestroyed);
@@ -763,7 +760,7 @@
     },
     reset() {
       clearAll();
-      B.selected = 1;
+      B.selected = 0;
       B.rotOffset = 0;
     },
     save() {
