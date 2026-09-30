@@ -205,7 +205,17 @@ export default async (page, h) => {
   await gw(0.5);
   s = await h.eval(() => ({ seated: G.pirates.seated, ov: !!G.player.controlOverride, blocked: G.interaction.blocked, hint: G.hud.toolHint, cross: G.hud.crosshair }));
   ok(s.seated && s.ov && s.blocked, 'seated at the cannon: ' + JSON.stringify(s));
-  ok(/^Levé tlačítko: Pal! · Koule: \d+ · E: Vstát$/.test(s.hint), 'cannon hint: ' + s.hint);
+  ok(/^Levé tlačítko: Pal! · Koule: \d+ · E: Vstát · V: pohled zezadu$/.test(s.hint), 'cannon hint: ' + s.hint);
+  ok(s.cross === 'dot', 'first-person cannon view has a sight dot');
+  const camDist = () => h.eval(() => { const v = new THREE.Vector3(); window.__cannon.object.getWorldPosition(v); return G.camera.position.distanceTo(v); });
+  s = await camDist();
+  ok(s < 1.8, 'first person: the eye is right behind the breech (' + s.toFixed(2) + ' m from the cannon)');
+  await shot('03b-cannon-first-person');
+  await h.key('KeyV', 60); await gw(0.6);
+  s = await camDist();
+  ok(s > 2.4, 'V: view from behind (' + s.toFixed(2) + ' m)');
+  await h.key('KeyV', 60); await gw(0.6);
+  ok((await camDist()) < 1.8, 'V again: back to first person');
   // mouse aims within the limits
   await h.look(-5000, 0);
   await gw(0.15);

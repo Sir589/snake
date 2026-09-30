@@ -38,7 +38,9 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    z lišty se pustí na palubu a chodí po voru. Nakrmená dávají: kráva a koza mléko, ovce vlnu (→ provaz), prase lanýže,
    slepice vejce (na grilu pečené vejce). Papoušek létá po voru, E = pojmenovat, mluví a varuje před žralokem a piráty.
    Test: `tools/scenarios/animals.mjs`.
-9. **Pohled z první osoby u kanónu** (kanón už se otáčí o 360°).
+9. ✅ **HOTOVO – Pohled z první osoby u kanónu** (kanón už se otáčí o 360°).
+   *Hotovo:* u kanónu se díváš přímo podél hlavně (zaměřovací tečka + dráha koule), klávesa V přepne na pohled zezadu
+   a zpět. Test: `tools/scenarios/pirates.mjs`.
 10. **Multiplayer** – vyžaduje server (např. WebSocket/WebRTC), synchronizaci voru a hráčů. Velký projekt.
 11. **Steam** – zabalit hru (Electron nebo Tauri), účet Steamworks (poplatek 100 USD za hru),
     stránka obchodu, ikony, testování. Registraci a platbu musí udělat majitel účtu sám.

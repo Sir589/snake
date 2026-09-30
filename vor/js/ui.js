@@ -114,6 +114,7 @@
     ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
     ['Jemné díly (prkénko, trám, sloup, půlblok)', K('G') + ' mřížka 25 / 50 cm, ' + K('R') + ' otočit', 'vyber díl v nabídce kladiva'],
     ['Dalekohled', 'podrž levé tlačítko, pravé = zvětšení 4× / 8×', '● podrž, ◐ zvětšení'],
+    ['Kanón', 'E sednout / vstát, levé tl. vystřelit, ' + K('V') + ' pohled od hlavně / zezadu', 'E, ●'],
     ['Zvířata', 'na ostrově E = chytit (provaz), z lišty levé tl. = pustit na vor, E = nakrmit / sebrat', 'E, ●'],
     ['Potápění (ve vodě)', K('Q') + ' dolů, ' + K('Mezerník') + ' nahoru, plaveš kam se díváš', '⤓ dolů, ⤒ nahoru'],
     ['Podpalubí', 'kladivo → Podpalubí pod díl voru, dolů poklopem (' + K('E') + ')', 'kladivo → Podpalubí, E u poklopu'],

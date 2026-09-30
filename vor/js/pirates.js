@@ -2552,7 +2552,8 @@
   // The seat: sitting at a cannon (control override)
   // ---------------------------------------------------------------------------
   const seat = { active: false, s: null, blendT: 0, fromPos: new THREE.Vector3(), fromQuat: new THREE.Quaternion(),
-    shake: 0, unblock: 0, noAmmoAt: -10, hint: '', wantStand: false };
+    shake: 0, unblock: 0, noAmmoAt: -10, hint: '', wantStand: false,
+    fp: true };                 // first-person view along the barrel (V switches to the view from behind)
 
   const override = { update(dt) { seatUpdate(dt); } };
 
@@ -2626,19 +2627,32 @@
         if (G.time - seat.noAmmoAt > 3) { seat.noAmmoAt = G.time; G.notify('Nemáš dělové koule!', 'warn'); }
       }
     }
-    // camera behind & above the barrel
+    // view: first person, the gunner's eye right behind the breech looking along the barrel (ROADMAP 9);
+    // V switches to the view from behind & above
+    const cam = G.camera;
+    if (!ui && inp.pressed('KeyV')) {
+      seat.fp = !seat.fp;
+      seat.blendT = 0;
+      seat.fromPos.copy(cam.position);
+      seat.fromQuat.copy(cam.quaternion);
+    }
     const A = cannonFrame(s, _a, _dir);
     const sa = Math.sin(A), ca = Math.cos(A);
     seat.shake = Math.max(0, seat.shake - dt * 3.5);
     const sh = seat.shake * seat.shake;
-    _t.set(_a.x - sa * 2.6 - ca * 0.95, _a.y + 1.3, _a.z - ca * 2.6 + sa * 0.95);
+    if (seat.fp) {
+      const back = 1.05 + (s._cv ? -s._cv.recoilG.position.z : 0) * 0.6;
+      _t.set(_a.x - sa * back, _a.y + 0.44, _a.z - ca * back);
+      _e.set(d.pitch * 0.92 - 0.07 + sh * 0.05, A + PI, 0, 'YXZ');
+    } else {
+      _t.set(_a.x - sa * 2.6 - ca * 0.95, _a.y + 1.3, _a.z - ca * 2.6 + sa * 0.95);
+      _e.set(d.pitch * 0.55 - 0.1 + sh * 0.04, A + PI, 0, 'YXZ');
+    }
     _t.x += Math.sin(G.time * 57) * 0.05 * sh;
     _t.y += Math.sin(G.time * 43 + 1) * 0.06 * sh;
-    _e.set(d.pitch * 0.55 - 0.1 + sh * 0.04, A + PI, 0, 'YXZ');
     _q.setFromEuler(_e);
     seat.blendT = Math.min(1, seat.blendT + dt / 0.35);
     const e = smooth01(seat.blendT);
-    const cam = G.camera;
     if (e < 1) {
       cam.position.lerpVectors(seat.fromPos, _t, e);
       _qc.copy(seat.fromQuat).slerp(_q, e);
@@ -2654,12 +2668,12 @@
     // trajectory preview
     updatePreview(s);
     // HUD
-    const hint = btnL() + ': Pal! · Koule: ' + n + ' · E: Vstát';
+    const hint = btnL() + ': Pal! · Koule: ' + n + ' · E: Vstát' + (G.input.touchMode ? '' : ' · V: ' + (seat.fp ? 'pohled zezadu' : 'pohled od hlavně'));
     if (hint !== seat.hint) { seat.hint = hint; }
     G.hud.setToolHint(seat.hint);
     if (cv.reload > 0) G.hud.setProgress(1 - cv.reload / RELOAD, 'Nabíjím…');
     else G.hud.setProgress(null);
-    G.hud.crosshair = 'hidden';
+    G.hud.crosshair = seat.fp ? 'dot' : 'hidden';
   }
 
   function updatePreview(s) {

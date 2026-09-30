@@ -537,6 +537,8 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Cannon view (ROADMAP 9).** Seated at a cannon the camera is first person (eye ~1 m behind the trunnion, 0.44 m
+  above it, pitch following the barrel, sight dot on); KeyV toggles the older view from behind & above (`seat.fp`).
 - **Animals (ROADMAP 8).** js/animals.js (order 52): items of category `animal` (krava, koza, ovce, prase, slepice,
   papousek; tool `animal` releases the held one on a free deck point), products mleko / vlna / lanyz / vejce
   (→ vejce_pecene on the grill), recipe provaz_vlna. Raft animals are children of the raft group, wander between free
