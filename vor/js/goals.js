@@ -42,7 +42,8 @@
     { id: 'gril', kind: 'steps', recipe: 'gril',
       steps: ['Postav gril', 'Upeč rybu'],
       text: 'Postav gril a upeč rybu',
-      hint: 'Polož gril na vor. Přijď k němu se syrovou rybou, zmáčkni E a po chvíli si ji vezmi.' },
+      hint: 'Gril potřebuje 1 kovový šrot – najdeš ho v sudech. Polož gril na vor, přijď k němu se syrovou rybou a zmáčkni E.',
+      hintTouch: 'Gril potřebuje 1 kovový šrot – najdeš ho v sudech. Polož gril na vor, přijď k němu se syrovou rybou a stiskni E.' },
     { id: 'ostep', kind: 'once', recipe: 'ostep',
       text: 'Vyrob oštěp (proti žralokovi)',
       hint: 'Na oštěp potřebuješ kovový šrot – najdeš ho v sudech. Kliknutím bodáš, žralok pak uteče.',
@@ -53,8 +54,8 @@
       hint: 'Vyrob plachtu, postav ji na vor a zmáčkni u ní E. S plachtou popluješ mnohem rychleji.' },
     { id: 'ostrov', kind: 'once',
       text: 'Navštiv ostrov',
-      hint: 'Až se na obzoru objeví ostrov, doplav k němu. Na břeh vylezeš Mezerníkem. Kotva udrží vor na místě.',
-      hintTouch: 'Až se na obzoru objeví ostrov, doplav k němu. Na břeh vylezeš tlačítkem ⤒. Kotva udrží vor na místě.' },
+      hint: 'Až se objeví ostrov, stáhni plachtu (E) a doplav k němu. Do vody jen s oštěpem – žralok! Na břeh vylezeš Mezerníkem.',
+      hintTouch: 'Až se objeví ostrov, stáhni plachtu (E) a doplav k němu. Do vody jen s oštěpem – žralok! Na břeh vylezeš tlačítkem ⤒.' },
     { id: 'kanon', kind: 'once', recipe: 'kanon',
       text: 'Postav kanón',
       hint: 'Kanón potřebuje hodně kovu (8×). Hledej ho v sudech a ve vracích na ostrovech.' },
@@ -206,6 +207,18 @@
     else if (e.id === 'kelimek') step('kelimek', 0);
     else if (e.id === 'udice') step('ryba', 0);
   }
+  // An island came close: swimming there with the shark around is deadly without a spear.
+  let sharkWarnAt = -1e9;
+  function onIslandNear() {
+    if (quiet || G.state !== 'playing') return;
+    const S = G.shark;
+    let present = false;
+    try { present = !!(S && (typeof S.present === 'function' ? S.present() : S.state && S.state !== 'away' && S.state !== 'dead')); } catch (e) { present = false; }
+    if (!present || G.time - sharkWarnAt < 120) return;
+    sharkWarnAt = G.time;
+    G.notify(has('ostep') ? 'Pozor na žraloka – vezmi si oštěp do ruky.' : 'Pozor na žraloka – vezmi si oštěp.', 'warn');
+  }
+
   function onStructure(e) {
     const t = e && e.type;
     if (t === 'purifier') step('cisticka', 0);
@@ -230,6 +243,7 @@
       on('cook:done', () => step('gril', 1));
       on('sail:toggled', (e) => { if (e && e.up) step('plachta', 1); });
       on('island:visited', () => complete(byId.ostrov));
+      on('island:near', onIslandNear);
       on('pirates:sunk', () => complete(byId.lod));
       on('world:day', (e) => setCount('dny', ((e && e.day) || 1) - 1));
       on('input:touchmode', bump);
@@ -244,6 +258,7 @@
         if (g.steps) for (const s of g.steps) s.done = false;
       }
       checkT = 0.6;
+      sharkWarnAt = -1e9;
       quiet = false;
       bump();
     },

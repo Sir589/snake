@@ -88,6 +88,8 @@
   function isNight() { const W = G.world; return !!(W && typeof W.isNight === 'function' && W.isNight()); }
   function btnL() { return G.input && G.input.touchMode ? '●' : 'Levé tlačítko'; }
   function btnR() { return G.input && G.input.touchMode ? '◐' : 'Pravé tlačítko'; }
+  // The bite call must end with '!' (ui.js shows it in the urgent style).
+  function biteText() { return G.input && G.input.touchMode ? 'Záběr! Stiskni ●!' : 'Záběr! Klikni!'; }
   function inWater() { const P = G.player; return !!(P && P.inWater); }
   function sfx(name, pos, vol) {
     const o = {};
@@ -592,7 +594,7 @@
     fx('splash', bob, 0.22);
     sfx('fish_bite', null, 1);
     spawnRipple(bob.x, bob.z, 1.4, 0.9);
-    setProgress(1, 'Záběr! Klikni!');
+    setProgress(1, biteText());
   }
 
   function escape() {
@@ -805,7 +807,7 @@
       if (rippleT <= 0) { rippleT = 0.26; spawnRipple(bob.x, bob.z, 1.1, 0.7); }
       splashT -= dt;
       if (splashT <= 0) { splashT = 0.42; fx('splash', bob, 0.14); }
-      setProgress(clamp(1 - biteT / BITE_WINDOW, 0, 1), 'Záběr! Klikni!');
+      setProgress(clamp(1 - biteT / BITE_WINDOW, 0, 1), biteText());
       if (biteT >= BITE_WINDOW) { escape(); }
     }
     bob.y = waveH(bob.x, bob.z) + 0.012 - dip;
@@ -1039,14 +1041,14 @@
     secondaryUp() {},
     update() {},
     hint() {
-      if (st === 'bite') return 'Záběr! Klikni!';
+      if (st === 'bite') return biteText();
       if (msgT > 0) return msg;
       if (inWater()) return 'Ve vodě nemůžeš nahazovat.';
       switch (st) {
-        case 'idle': return 'Podrž ' + btnL().toLowerCase() + ' a pusť: Nahodit udici';
-        case 'charging': return 'Pusť ' + btnL().toLowerCase() + ': Nahodit · ' + btnR() + ': Zrušit';
-        case 'waiting': return 'Čekej na záběr… pak rychle klikni! · ' + btnR() + ': Navinout';
-        case 'bite': return 'Záběr! Klikni!';
+        case 'idle': return 'Podrž ' + btnL().toLowerCase() + ' a pusť: nahodit udici';
+        case 'charging': return 'Pusť ' + btnL().toLowerCase() + ': nahodit · ' + btnR() + ': zrušit';
+        case 'waiting': return 'Čekej na záběr… pak rychle ' + (G.input && G.input.touchMode ? 'stiskni ●' : 'klikni') + '! · ' + btnR() + ': navinout';
+        case 'bite': return biteText();
         default: return '';
       }
     },

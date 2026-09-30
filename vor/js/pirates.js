@@ -12,12 +12,15 @@
   // ---------------------------------------------------------------------------
   // Tunables
   // ---------------------------------------------------------------------------
-  const FIRST_RAID = 600, RAID_MIN = 480, RAID_MAX = 720, CHECK_EVERY = 30, MIN_TILES = 6;
+  // The first raid also waits for a spear (goal 'ostep' done or one in the inventory).
+  const FIRST_RAID = 900, RAID_MIN = 480, RAID_MAX = 720, CHECK_EVERY = 30, MIN_TILES = 8;
   const SPAWN_DIST = 180, CIRCLE_MIN = 35, CIRCLE_MAX = 45;
   const SPEED_APPROACH = 7, SPEED_CIRCLE = 3.4, SPEED_LEAVE = 6.5, TURN_RATE = 0.3;
   const FIRE_MIN = 6, FIRE_MAX = 8, MISS_CHANCE = 0.35;
   const TILE_DMG = 35, BALL_PLAYER_DMG = 25, BALL_PLAYER_RADIUS = 2;
-  const BOAT_DELAY = 20, LEAVE_AFTER = 150;
+  const BOAT_DELAY = 20, LEAVE_AFTER = 150, LEAVE_AFTER_CREW = 25;   // ship leaves 25 s after its crew is gone
+  const BOARD_GIVE_UP = 60;                                           // boarders jump back into the sea after 60 s
+  const SHOVE_DMG = 5, SHOVE_PUSH = 5.5, SHOVE_RANGE = 2.3, SHOVE_CD = 0.5;   // unarmed LMB shove
   const SHIP_HP = 300, SHIP_RADIUS = 6, BALL_SHIP_DMG = 60, SINK_TIME = 8.5;
   const BOARDER_HP = 60, MELEE_DMG = 10, MELEE_CD = 1.2, MELEE_RANGE = 1.3;
   const BOARDER_SPEED = 2.5, BOAT_SPEED = 2.6;
@@ -82,6 +85,31 @@
   }
   function player() { return G.player || null; }
   function ammo() { return G.inventory && typeof G.inventory.count === 'function' ? G.inventory.count('koule') : 0; }
+  function spearInInventory() { return !!(G.inventory && typeof G.inventory.count === 'function' && G.inventory.count('ostep') > 0); }
+  function hasSpear() {
+    const g = G.goals && typeof G.goals.get === 'function' ? G.goals.get('ostep') : null;
+    return !!(g && g.done) || spearInInventory();
+  }
+
+  // Per-raid numbers: the first two raids are gentler, later ones scale with the ships sunk so far.
+  let raidNo = 0;                    // raids started in this game (saved)
+  let ringTipShown = false;          // one-time "dodge the red ring" banner (saved)
+  const tune = { tileDmg: 35, ballDmg: 25, ballR: 2, miss: 0.35, fireMin: 6, fireMax: 8,
+    meleeDmg: 10, shipHp: 300, boarders: 2, sunk: 0 };
+  function makeTune() {
+    const sunk = Math.max(0, Math.floor(Number(G.stats && G.stats.piratesSunk) || 0));
+    const early = raidNo <= 2;
+    tune.sunk = sunk;
+    tune.tileDmg = early ? 25 : TILE_DMG;
+    tune.ballDmg = early ? 15 : BALL_PLAYER_DMG;
+    tune.ballR = early ? 1.5 : BALL_PLAYER_RADIUS;
+    tune.miss = early ? 0.45 : MISS_CHANCE;
+    tune.fireMin = Math.max(4, FIRE_MIN - 0.5 * sunk);
+    tune.fireMax = Math.max(4, FIRE_MAX - 0.5 * sunk);
+    tune.meleeDmg = raidNo === 1 ? 7 : MELEE_DMG;
+    tune.shipHp = Math.min(600, SHIP_HP + 100 * sunk);
+    tune.boarders = raidNo === 1 ? G.randInt(1, 2) : Math.min(4, G.randInt(2, 3) + Math.floor(sunk / 2));
+  }
 
   // Height of the raft deck under (x, z) via the G.ground registry ('raft' providers only), or null.
   function raftHeight(x, z) {
@@ -462,6 +490,7 @@
     { shirt: 0xb8322a, sleeve: 0xefe8da, pants: 0x34425f, band: 0xc0392b, hat: false, beard: 0x3a2616, patch: false, skin: 0xe2a877, hook: false, earring: true },
     { shirt: 0x2b3f73, sleeve: 0x2b3f73, pants: 0x5a4632, band: 0x1f1f1f, hat: true, beard: 0x1e1410, patch: true, skin: 0xc98b5e, hook: false, earring: false },
     { shirt: 0x2a2a2a, sleeve: 0xefe8da, pants: 0x4b5a39, band: 0xd9a441, hat: false, beard: null, patch: false, skin: 0xf0c090, hook: true, earring: false },
+    { shirt: 0x3f6b3a, sleeve: 0xefe8da, pants: 0x3b3029, band: 0x2f6fa8, hat: false, beard: 0x8a4a22, patch: true, skin: 0xd9a070, hook: false, earring: true },
   ];
   const BONES = {
     legL: [-0.11, 0.92, 0], legR: [0.11, 0.92, 0], torso: [0, 0.92, 0],
@@ -971,7 +1000,7 @@
   BOAT.prof = [[0.92, (top) => top], [0.95, (top) => top - 0.07], [1.0, () => 0.26], [0.8, () => -0.1], [0.42, (t, d) => -0.8 * d], [0, (t, d) => -d]];
   BOAT.colors = [0x5a3a22, 0x8a6444, 0x7c5a3c, 0x4a3a2c, 0x3a2c22];
   BOAT.transom = 0x6e4f33;
-  const BOAT_SEATS = [[0, 0.3, 0.72], [0, 0.3, -0.1], [0, 0.3, -0.95]];
+  const BOAT_SEATS = [[0, 0.3, 0.72], [0, 0.3, -0.1], [0, 0.3, -0.95], [0, 0.3, 1.32]];
   let boatM = null;
 
   function buildBoat() {
@@ -1279,7 +1308,7 @@
     const t = G.raft ? G.raft.tileAt(b.target.x, b.target.z) : null;
     _p.set(b.target.x, deckY() + 0.2, b.target.z);
     if (t) {
-      G.raft.damageTile(t, TILE_DMG, 'cannon');
+      G.raft.damageTile(t, tune.tileDmg, 'cannon');
       fx('explosion', _p, 1.0);
       fx('debris', _p, 0x8b6a45, 18);
       snd('explosion', _p, 1);
@@ -1297,10 +1326,10 @@
     if (P && P.alive) {
       const dx = P.position.x - pos.x, dz = P.position.z - pos.z;
       const dy = P.position.y + 0.9 - pos.y;
-      if (Math.hypot(dx, dz) < BALL_PLAYER_RADIUS && Math.abs(dy) < 2.5) {
+      if (Math.hypot(dx, dz) < tune.ballR && Math.abs(dy) < 2.5) {
         _d.set(dx, 0, dz);
         if (_d.lengthSq() < 1e-4) _d.set(1, 0, 0);
-        P.damage(BALL_PLAYER_DMG, 'cannon', _d.normalize());
+        P.damage(tune.ballDmg, 'cannon', _d.normalize());
       }
     }
     for (const b of boarders) {
@@ -1382,9 +1411,9 @@
       position: new THREE.Vector3(x, 0, z),
       heading: Math.atan2(-x, -z),
       speed: SPEED_APPROACH * 0.8,
-      hp: SHIP_HP, maxHp: SHIP_HP,
+      hp: tune.shipHp, maxHp: tune.shipHp,
       state: 'approach',
-      combatTime: 0, fireT: 3, boatLaunched: false,
+      combatTime: 0, fireT: 3, boatLaunched: false, leaveAt: -1,
       circleDir: G.chance(0.5) ? 1 : -1,
       radius: G.rand(CIRCLE_MIN + 3, CIRCLE_MAX - 3), radiusPhase: Math.random() * TAU,
       sinkT: 0, lootDone: false, boomT: 0, fireFxT: 0, listSide: 1,
@@ -1412,7 +1441,7 @@
     s.state = 'circle';
     s.combatTime = 0;
     s.fireT = 2.5;
-    G.notify('Pirátská loď útočí! Pozor na dělové koule.', 'warn');
+    G.notify('Pirátská loď útočí! Uhýbej z červených kruhů – tam dopadne koule.', 'warn');
     const cannons = G.raft ? G.raft.findStructures('cannon') : [];
     if (cannons.length) {
       if (ammo() > 0) G.notify('Sedni ke kanónu (E) a střílej na loď!', 'info');
@@ -1536,7 +1565,7 @@
     _muz.copy(lm).applyMatrix4(obj.matrixWorld);
     const tile = G.raft.randomTile();
     if (!tile) return false;
-    const hit = forceHit === true ? true : forceHit === false ? false : !G.chance(MISS_CHANCE);
+    const hit = forceHit === true ? true : forceHit === false ? false : !G.chance(tune.miss);
     let tx, ty, tz, onRaft = false;
     if (hit) {
       G.raft.tileCenter(tile, _t);
@@ -1555,6 +1584,11 @@
     b.tile = hit ? tile : null;
     b.target.set(tx, ty, tz);
     b.ring = getRing(onRaft, tx, tz, T);
+    const P = player();
+    if (!ringTipShown && P && P.alive && Math.hypot(P.position.x - tx, P.position.z - tz) < 3) {
+      ringTipShown = true;
+      banner('Uhni z červeného kruhu!', 'warn', 3);
+    }
     // muzzle flash & smoke
     _d.copy(_v).normalize();
     _p.copy(_muz).addScaledVector(_d, 0.4);
@@ -1619,16 +1653,23 @@
     s.lootDone = true;
     const D = G.debris;
     if (!D || typeof D.spawnItem !== 'function') return;
-    const list = [['kov', G.randInt(3, 6)], ['koule', G.randInt(3, 5)], ['zlato', G.randInt(10, 30)], ['prkno', G.randInt(5, 10)]];
+    const bonus = Math.min(3, tune.sunk);
+    const list = [['kov', G.randInt(3, 6) + bonus], ['koule', G.randInt(3, 5)], ['zlato', G.randInt(10, 30)], ['prkno', G.randInt(5, 10)]];
     if (G.chance(0.6)) list.push(['kelimek_sladky', G.randInt(1, 2)]);
     if (G.chance(0.5)) list.push([G.pick(['provaz', 'plast']), G.randInt(3, 6)]);
-    const px = s.position.x, pz = s.position.z;
+    // The waves bring the treasure to you: the bundles surface upstream of the raft (wherever the
+    // ship went down), so they drift past within hook reach.
+    const w = G.world && G.world.windDir;
+    let wx = w ? w.x : 1, wz = w ? w.z : 0;
+    const wl = Math.hypot(wx, wz) || 1;
+    wx /= wl; wz /= wl;
+    const base = Math.max(14, raftRadius() + 6);
     for (let i = 0; i < list.length; i++) {
-      const k = G.rand(0.1, 0.32);
-      _p.set(px * (1 - k) + G.rand(-3, 3), 0, pz * (1 - k) + G.rand(-3, 3));
+      const along = base + G.rand(0, 8), lat = G.rand(-6, 6);
+      _p.set(wx * along - wz * lat, 0, wz * along + wx * lat);
       try { D.spawnItem(list[i][0], list[i][1], _p); } catch (err) { /* ignore */ }
     }
-    G.notify('Z vraku vyplavaly poklady! Chyť je hákem.', 'good');
+    G.notify('Z vraku vyplavaly poklady! Vlny je nesou k tobě – chyť je hákem.', 'good');
   }
 
   function updateSinking(dt) {
@@ -1694,11 +1735,16 @@
       if (s.fireT <= 0) {
         const h = s.heading, dx = -s.position.x, dz = -s.position.z;
         const lx = dx * Math.cos(h) - dz * Math.sin(h), lz = dx * Math.sin(h) + dz * Math.cos(h);
-        if (Math.abs(lx) > Math.abs(lz) * 0.7) { shipFire(); s.fireT = G.rand(FIRE_MIN, FIRE_MAX); }
+        if (Math.abs(lx) > Math.abs(lz) * 0.7) { shipFire(); s.fireT = G.rand(tune.fireMin, tune.fireMax); }
         else s.fireT = 1;
       }
       if (!s.boatLaunched && s.combatTime >= BOAT_DELAY) { s.boatLaunched = true; launchBoat(); }
-      if (s.combatTime >= LEAVE_AFTER && boardersRemaining() === 0) {
+      const crewGone = s.boatLaunched && boardersRemaining() === 0;
+      if (crewGone && s.leaveAt < 0) {
+        s.leaveAt = s.combatTime + LEAVE_AFTER_CREW;
+        G.notify('Všichni piráti jsou pryč! Loď brzy odpluje – vydrž.', 'good');
+      }
+      if ((s.leaveAt >= 0 && s.combatTime >= s.leaveAt) || (s.combatTime >= LEAVE_AFTER && boardersRemaining() === 0)) {
         s.state = 'leave';
         G.notify('Piráti to vzdávají a odplouvají!', 'info');
       }
@@ -1826,6 +1872,7 @@
     fall: ['Neumím plavat!', 'Áááá!', 'Pomóóc!'],
     die: ['Arrgh…', 'Já se vrátím!', 'Au au au…'],
     sunk: ['Naše loď!', 'Hromy a blesky!', 'To ne!'],
+    flee: ['Ústup!', 'Zpátky na loď!', 'Tohle nestojí za to!'],
   };
 
   const boarders = [];
@@ -1833,6 +1880,7 @@
   const boat = { active: false, state: 'none', pos: new THREE.Vector3(), heading: 0, speed: 0, phase: 0, passengers: [],
     tx: 0, tz: 0, dirx: 0, dirz: 0, bx: 0, bz: 0, retargetT: 0, unloadT: 0, sinkT: 0, bob: 0, landed: false, driftT: 0 };
   let boardingAnnounced = false;
+  let boardT = 0, gaveUp = false, shoveCd = 0;
 
   function boardersRemaining() {
     let n = 0;
@@ -1904,12 +1952,20 @@
     if (b.target) { G.combat.remove(b.target); b.target = null; }
     G.stats.piratesDefeated = (G.stats.piratesDefeated || 0) + 1;
     const gold = G.randInt(3, 8);
-    if (G.inventory && typeof G.inventory.add === 'function') G.inventory.add('zlato', gold, 'pirate');
+    let left = gold;
+    if (G.inventory && typeof G.inventory.add === 'function') left = Math.max(0, Number(G.inventory.add('zlato', gold, 'pirate')) || 0);
+    if (left > 0 && G.debris && typeof G.debris.spawnItem === 'function') {
+      _p.set(b.pos.x, 0, b.pos.z);                             // spawnItem moves it off the deck
+      try { G.debris.spawnItem('zlato', left, _p); } catch (err) { /* ignore */ }
+    }
+    const got = gold - left;
     snd('coins', b.pos, 0.9);
     _p.set(b.pos.x, b.pos.y + 1.2, b.pos.z);
     fx('sparkle', _p, 0xe8b923);
     G.events.emit('pirate:killed', { cause, gold, x: b.pos.x, z: b.pos.z });
-    G.notify('Pirát poražen! +' + gold + ' ' + plural(gold, 'zlaťák', 'zlaťáky', 'zlaťáků'), 'good');
+    if (left <= 0) G.notify('Pirát poražen! +' + gold + ' ' + plural(gold, 'zlaťák', 'zlaťáky', 'zlaťáků'), 'good');
+    else if (got > 0) G.notify('Pirát poražen! +' + got + ' ' + plural(got, 'zlaťák', 'zlaťáky', 'zlaťáků') + ', zbytek plave ve vodě.', 'good');
+    else G.notify('Pirát poražen! Zlaťáky plavou ve vodě.', 'good');
   }
 
   function hurtBoarder(b, dmg, dir, source, push) {
@@ -2001,9 +2057,9 @@
     boatM.root.scale.setScalar(1);
     if (!boatM.root.parent) G.scene.add(boatM.root);
     findBoatTarget(boat.pos.x, boat.pos.z);
-    const n = G.randInt(2, 3);
-    // seat 0 = bow (captain with the hat), seat 1 = rower, seat 2 = stern
-    const plan = n === 2 ? [[1, 0], [0, 1]] : [[1, 0], [0, 1], [2, 2]];
+    const n = G.clamp(tune.boarders | 0, 1, 4);
+    // seat 0 = bow (captain with the hat), seat 1 = rower, seat 2 = stern, seat 3 = front
+    const plan = n === 1 ? [[0, 1]] : [[1, 0], [0, 1], [2, 2], [3, 3]].slice(0, n);
     for (const [variant, seat] of plan) {
       const b = spawnBoarder(variant, seat);
       boat.passengers.push(b);
@@ -2014,7 +2070,7 @@
     fx('splash', _p, 1.6);
     snd('splash_big', _p, 0.8);
     snd('pirate_yell', s.position, 1);
-    G.notify('Piráti spouštějí člun! Připrav si oštěp.', 'warn');
+    G.notify(spearInInventory() ? 'Piráti spouštějí člun! Připrav si oštěp.' : 'Piráti spouštějí člun a jedou k voru!', 'warn');
     say(boat.passengers[0], 'Arrr! Na ně!', 2);
     return true;
   }
@@ -2191,7 +2247,12 @@
         if (!boardingAnnounced) {
           boardingAnnounced = true;
           G.events.emit('pirates:boarding', { count: boardersRemaining() });
-          G.notify('Piráti lezou na vor! Braň se oštěpem!', 'danger');
+          if (spearInInventory()) G.notify('Piráti lezou na vor! Braň se oštěpem!', 'danger');
+          else {
+            G.notify('Piráti lezou na vor!', 'danger');
+            G.notify('Nemáš oštěp! Vyrob si ho: 4 prkna, 1 kov, 2 provazy.', 'warn');
+            G.notify('Zatím je strkej do vody: ' + btnL() + '.', 'info');
+          }
           banner('Piráti na voru!', 'danger', 2.5);
           snd('pirate_yell', b.pos, 1);
           say(b, G.pick(LINES.land), 2);
@@ -2248,7 +2309,7 @@
             if (P.alive && playerOnRaft() && pd < MELEE_RANGE + 0.4 && Math.abs(P.position.y - b.pos.y) < 1.4) {
               _d.set(px, 0, pz);
               if (_d.lengthSq() < 1e-4) _d.set(Math.sin(b.yaw), 0, Math.cos(b.yaw));
-              P.damage(MELEE_DMG, 'pirate', _d.normalize());
+              P.damage(tune.meleeDmg, 'pirate', _d.normalize());
               snd('sword', _p, 1);
             } else snd('whoosh', _p, 0.5);
           }
@@ -2267,7 +2328,7 @@
       b.pos.y += b.vy * dt;
       const wy = waveH(b.pos.x, b.pos.z);
       if (b.pos.y < wy - 0.5) {
-        b.state = 'sink';
+        b.state = b.cause === 'retreat' ? 'swim' : 'sink';
         b.stateT = 0;
         _p.set(b.pos.x, wy, b.pos.z);
         fx('splash', _p, 1.3);
@@ -2280,6 +2341,25 @@
       b.pos.y = b.stateT < 1.3 ? wy - 1.0 + Math.sin(b.stateT * 7) * 0.08 : wy - 1.0 - (b.stateT - 1.3) * 0.9;
       if (Math.random() < dt * 5) { _p.set(b.pos.x, wy, b.pos.z); fx('bubbles', _p, 6); }
       if (b.stateT > 3.2) { removeBoarder(b); return; }
+    } else if (b.state === 'flee') {
+      // run to the nearest raft edge and jump in
+      const dx = b.to.x - b.pos.x, dz = b.to.z - b.pos.z, d = Math.hypot(dx, dz) || 1;
+      b.yaw = dampAngle(b.yaw, Math.atan2(dx, dz), 10, dt);
+      const step = Math.min(d, BOARDER_SPEED * 1.4 * dt);
+      b.pos.x += (dx / d) * step; b.pos.z += (dz / d) * step;
+      moving = 1; b.walk += step;
+      const gh = raftHeight(b.pos.x, b.pos.z);
+      if (gh === null || d < 0.1 || b.stateT > 8) { startFall(b, (dx / d) * 2.5, (dz / d) * 2.5); b.vy = 4.5; }
+      else b.pos.y = gh;
+    } else if (b.state === 'swim') {
+      // swim away from the raft and dive out of sight
+      const wy = waveH(b.pos.x, b.pos.z);
+      const l = Math.hypot(b.pos.x, b.pos.z) || 1;
+      b.pos.x += (b.pos.x / l) * 1.8 * dt; b.pos.z += (b.pos.z / l) * 1.8 * dt;
+      b.yaw = Math.atan2(b.pos.x, b.pos.z);
+      b.pos.y = b.stateT < 6 ? wy - 1.05 + Math.sin(b.stateT * 5) * 0.06 : wy - 1.05 - (b.stateT - 6) * 0.9;
+      if (Math.random() < dt * 2) { _p.set(b.pos.x, wy, b.pos.z); fx('ripple', _p, 0.5); }
+      if (b.stateT > 8) { removeBoarder(b); return; }
     } else if (b.state === 'dying') {
       const kb = Math.hypot(b.kbx, b.kbz);
       if (kb > 0.05) {
@@ -2328,7 +2408,7 @@
       armL = -2.7 + Math.sin(k) * 0.3; armR = -2.5 - Math.sin(k) * 0.3;
       legL = -0.9 * Math.max(0, Math.sin(k)); legR = -0.9 * Math.max(0, -Math.sin(k));
       torsoX = 0.3;
-    } else if (b.state === 'fight') {
+    } else if (b.state === 'fight' || b.state === 'flee') {
       legL = Math.sin(ph) * 0.7 * mk; legR = -legL;
       armL = -0.2 - Math.sin(ph) * 0.45 * mk;
       armR = -0.65 + Math.sin(ph) * 0.2 * mk;
@@ -2339,14 +2419,14 @@
         if (a < 0.38) { const e = easeOut(a / 0.38); armR = G.lerp(-0.65, -3.3, e); torsoY = 0.35 * e; torsoX = -0.1 * e; }
         else if (a < 0.5) { const e = (a - 0.38) / 0.12; armR = G.lerp(-3.3, -0.8, e); torsoY = G.lerp(0.35, -0.35, e); torsoX = G.lerp(-0.1, 0.25, e); }
         else { const e = smooth01((a - 0.5) / 0.3); armR = G.lerp(-0.8, -0.65, e); torsoY = G.lerp(-0.35, 0, e); torsoX = G.lerp(0.25, 0.05, e); }
-      } else if (!goal.onRaft) {
+      } else if (!goal.onRaft && b.state === 'fight') {
         armR = -2.7 + Math.sin(t * 8) * 0.45;
         armL = -0.3; armLz = -0.9;
         bodyY = Math.abs(Math.sin(t * 5)) * 0.07;
       }
       torsoX -= b.flinch * 0.45;
       headX = -b.flinch * 0.3;
-    } else if (b.state === 'fall' || b.state === 'sink') {
+    } else if (b.state === 'fall' || b.state === 'sink' || b.state === 'swim') {
       armL = -2.8 + Math.sin(t * 15) * 0.5; armR = -2.6 + Math.cos(t * 14) * 0.5;
       armLz = -0.5; armRz = 0.5;
       legL = Math.sin(t * 12) * 0.6; legR = -legL;
@@ -2380,7 +2460,81 @@
     }
   }
 
+  // Nearest point just outside the raft edge from (x, z).
+  function nearestEdgeOut(x, z, out) {
+    const R = G.raft, TILE = G.C.TILE;
+    const DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+    let best = Infinity;
+    out.set(x + 3, 0, z);
+    const edges = R && R.edgeTiles ? R.edgeTiles() : [];
+    for (const t of edges) {
+      const cx = (t.i + 0.5) * TILE, cz = (t.j + 0.5) * TILE;
+      for (const d of DIRS) {
+        if (R.getTile ? R.getTile(t.i + d[0], t.j + d[1]) : R.tileAt(cx + d[0] * TILE, cz + d[1] * TILE)) continue;
+        const ox = cx + d[0] * (TILE * 0.5 + 0.6), oz = cz + d[1] * (TILE * 0.5 + 0.6);
+        const dd = (ox - x) * (ox - x) + (oz - z) * (oz - z);
+        if (dd < best) { best = dd; out.set(ox, 0, oz); }
+      }
+    }
+    return out;
+  }
+
+  // After BOARD_GIVE_UP s on deck the boarders give up and jump back into the sea (no gold).
+  function retreat(b) {
+    if (b.defeated) return;
+    b.defeated = true;
+    b.cause = 'retreat';
+    if (b.target) { G.combat.remove(b.target); b.target = null; }
+    b.state = 'flee';
+    b.stateT = 0;
+    b.attackT = -1;
+    b.kbx = b.kbz = 0;
+    nearestEdgeOut(b.pos.x, b.pos.z, b.to);
+    say(b, G.pick(LINES.flee), 1.6);
+  }
+
+  // Unarmed fallback: LMB without the spear shoves a boarder in front of you (5 dmg + knock-back),
+  // so they can still be pushed off the raft.
+  function updateShove(dt) {
+    if (shoveCd > 0) shoveCd -= dt;
+    if (shoveCd > 0 || !boarders.length || !G.input.mousePressed(0) || G.uiBlocking() || seat.active) return;
+    const P = player();
+    if (!P || !P.alive || P.controlOverride || typeof P.eye !== 'function' || typeof P.forward !== 'function') return;
+    const sel = G.inventory && typeof G.inventory.getSelected === 'function' ? G.inventory.getSelected() : null;
+    const def = sel && G.items && typeof G.items.def === 'function' ? G.items.def(sel.id) : null;
+    if (def && def.tool === 'spear') return;                 // the spear does its own (stronger) hit
+    P.eye(_a); P.forward(_dir);
+    let best = null, bestD = Infinity;
+    for (const b of boarders) {
+      if (b.defeated || b.state !== 'fight') continue;
+      _t.set(b.pos.x - _a.x, b.pos.y + 1.1 - _a.y, b.pos.z - _a.z);
+      const len = _t.length();
+      if (len - 0.45 > SHOVE_RANGE || len < 1e-4) continue;
+      const ang = Math.acos(G.clamp(_t.dot(_dir) / len, -1, 1));
+      if (ang > 0.6 + Math.atan(0.45 / Math.max(len, 0.1))) continue;
+      if (len < bestD) { bestD = len; best = b; }
+    }
+    if (!best) return;
+    shoveCd = SHOVE_CD;
+    _d.set(best.pos.x - P.position.x, 0, best.pos.z - P.position.z);
+    if (_d.lengthSq() < 1e-4) _d.set(_dir.x, 0, _dir.z);
+    _d.normalize();
+    hurtBoarder(best, SHOVE_DMG, _d, 'shove', SHOVE_PUSH);
+    snd('hit', best.pos, 0.8);
+  }
+
   function updateBoarders(dt) {
+    let onDeck = 0;
+    for (const b of boarders) if (!b.defeated && b.state === 'fight') onDeck++;
+    if (onDeck > 0 && !gaveUp) {
+      boardT += dt;
+      if (boardT >= BOARD_GIVE_UP) {
+        gaveUp = true;
+        for (const b of boarders) if (!b.defeated && b.state === 'fight') retreat(b);
+        G.notify('Piráti to vzdali a skáčou zpátky do moře!', 'good');
+      }
+    }
+    updateShove(dt);
     for (let i = boarders.length - 1; i >= 0; i--) {
       const b = boarders[i];
       if (!b) continue;
@@ -2572,6 +2726,9 @@
     if (API.active || !shipM) return false;
     clearRaid(false);
     boardingAnnounced = false;
+    boardT = 0; gaveUp = false; shoveCd = 0;
+    raidNo++;
+    makeTune();
     ship = spawnShip(opts);
     API.ship = ship;
     API.active = true;
@@ -2624,6 +2781,7 @@
     checkT = CHECK_EVERY;
     const P = player();
     if (API.active || G.time < API.nextRaidAt || !G.raft || G.raft.count() < MIN_TILES || (P && !P.alive)) return false;
+    if (raidNo === 0 && !hasSpear()) return false;          // the first raid never comes before the spear
     return spawnRaid();
   }
 
@@ -2680,6 +2838,8 @@
     sinkShip() { if (ship && ship.hp > 0) { ship.hp = 0; startSinking(); return true; } return false; },
     balls,
     BALL_V, BALL_G, RELOAD,
+    get raids() { return raidNo; },
+    tune,
   });
 
   // ---------------------------------------------------------------------------
@@ -2764,6 +2924,10 @@
       API.nextRaidAt = FIRST_RAID;
       checkT = CHECK_EVERY;
       boardingAnnounced = false;
+      raidNo = 0;
+      ringTipShown = false;
+      boardT = 0; gaveUp = false; shoveCd = 0;
+      makeTune();
       ammoCache = ammo();
       seat.unblock = 0;
       if (G.interaction.blocked && !seat.active) G.interaction.blocked = false;
@@ -2772,13 +2936,16 @@
     save() {
       // a raid in progress is not saved: after loading, the pirates come back a bit later
       const next = API.active ? Math.max(API.nextRaidAt, G.time + 300) : API.nextRaidAt;
-      return { nextRaidAt: Math.round(next) };
+      return { nextRaidAt: Math.round(next), raids: raidNo, ringTip: ringTipShown ? 1 : 0 };
     },
 
     load(d) {
       if (!d || typeof d !== 'object') return;
       const n = Number(d.nextRaidAt);
       if (Number.isFinite(n)) API.nextRaidAt = n;
+      const r = Number(d.raids);
+      if (Number.isFinite(r) && r >= 0) raidNo = Math.floor(r);
+      ringTipShown = !!d.ringTip;
       ammoCache = ammo();
     },
 

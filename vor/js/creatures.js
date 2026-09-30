@@ -31,6 +31,11 @@
   const BITE_TIME = 8;            // max seconds biting one tile
   const BITE_DMG = 10;            // per chomp (one chomp per second → 10/s)
   const PLAYER_DMG = 20, PLAYER_CD = 2;
+  // Kinder numbers while the swimmer has no spear to fight back with.
+  const PLAYER_DMG_SOFT = 15, PLAYER_CD_SOFT = 3;
+  const NOTICE_TIME = 2.5;        // slow fin approach before the first rush (time to get out)
+  const EDGE_GRACE_D = 3;         // a swimmer this close to the raft edge is not chased yet…
+  const EDGE_GRACE_T = 6;         // …for at most this many seconds
   const FLEE_TIME = 30;
   const RESPAWN = 180;
   const FLOAT_TIME = 40;          // dead body floats this long before it sinks
@@ -360,7 +365,7 @@
   let biteT = 0, chompT = 0, splashT = 0, leaveSide = 1;
   const edgeP = new THREE.Vector3(), biteC = new THREE.Vector3(), approachP = new THREE.Vector3();
   let edgeDX = 0, edgeDZ = 0;
-  let passT = 0, noticeT = 0, warnedSwim = false;
+  let passT = 0, noticeT = 0, warnedSwim = false, edgeGraceT = 0;
   const fleeP = new THREE.Vector3();
   let fleeT = 0;
   let deadT = 0, respawnT = 0, sunk = false;
@@ -782,11 +787,16 @@
     S.targetTile = null;
   }
 
+  function playerArmed() {
+    const inv = G.inventory;
+    try { return !!(inv && typeof inv.count === 'function' && inv.count('ostep') > 0); } catch (e) { return false; }
+  }
+
   function startAttackPlayer() {
     setState('attackPlayer', 'rush');
     S.targetTile = null;
     passT = 0;
-    noticeT = 0.6;
+    noticeT = NOTICE_TIME;
     G.events.emit('shark:attack', { target: 'player' });
     if (!warnedSwim) { warnedSwim = true; banner('Žralok! Rychle z vody!', 'danger', 2.5); }
   }
@@ -804,9 +814,9 @@
       move(dt);
       keepOff(1.0, 0.05, dt);
       const mx = pos.x + sx * (HEAD_Z - 0.15), mz = pos.z + sz * (HEAD_Z - 0.15);
-      if (Math.hypot(P.position.x - mx, P.position.z - mz) < 1.05) {
+      if (noticeT <= 0 && Math.hypot(P.position.x - mx, P.position.z - mz) < 1.05) {
         _v.set(sx, 0, sz);
-        if (typeof P.damage === 'function') P.damage(PLAYER_DMG, 'shark', _v);
+        if (typeof P.damage === 'function') P.damage(playerArmed() ? PLAYER_DMG : PLAYER_DMG_SOFT, 'shark', _v);
         _hp.set(P.position.x, waveH(P.position.x, P.position.z), P.position.z);
         fx('blood', _hp);
         fx('splash', _hp, 0.9);
@@ -828,7 +838,7 @@
       }
       move(dt);
       keepOff(1.0, 0.2, dt);
-      if (passT >= PLAYER_CD) {
+      if (passT >= (playerArmed() ? PLAYER_CD : PLAYER_CD_SOFT)) {
         if (inW) { S.phase = 'rush'; noticeT = 0; } else toCircle();
       }
     }
@@ -1108,8 +1118,13 @@
     if (S.state === 'dead') { updateDead(dt); pose(dt); return; }
     const P = G.player;
     const pw = !!(P && P.alive !== false && P.inWater);
-    if (!pw) warnedSwim = false;
-    if (pw && S.state !== 'flee' && S.state !== 'attackPlayer') startAttackPlayer();
+    if (!pw) { warnedSwim = false; edgeGraceT = 0; }
+    if (pw && S.state !== 'flee' && S.state !== 'attackPlayer') {
+      // someone who just fell off (or is about to climb back) gets a moment before the chase
+      const nearEdge = raftDist(P.position.x, P.position.z) < EDGE_GRACE_D;
+      if (nearEdge) edgeGraceT += dt;
+      if (!nearEdge || edgeGraceT > EDGE_GRACE_T) startAttackPlayer();
+    }
     switch (S.state) {
       case 'circle': updateCircle(dt, true); move(dt); keepOff(1.6, 1.0, dt); break;
       case 'attackRaft': updateAttackRaft(dt); break;
@@ -1160,7 +1175,7 @@
       spd = 0; turnRate = 0; depth = 1; ySm = -1; pitch = 0; roll = 0; amp = 0.12;
       jawOpen = 0; jawSnap = 0; flash = 0; thrash = 0;
       deadT = 0; respawnT = 0; sunk = false; fleeT = 0; biteT = 0;
-      announced = false; warnedSwim = false;
+      announced = false; warnedSwim = false; edgeGraceT = 0;
       rectsDirty = true;
       if (root) root.visible = false;
       if (wake) { wake.visible = false; wake.material.opacity = 0; }

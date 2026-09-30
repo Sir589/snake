@@ -23,6 +23,9 @@
   const NEAR_DIST = 80;              // island:near when the shore comes this close to the raft
   const MAX_ALIVE = 3;
   const SAFE_GAP = 8;                // min gap between the shore and the raft on the passing line
+  const FIRST_DIST = 100;            // the first island spawns closer, so it arrives without the sail
+  const LAT_STEER = 0.3;             // m/s: pull back to the planned passing line when the wind turns
+  const SWIM_HINT_DIST = 40;         // predicted passing shore distance that is worth swimming
   const EDGE_H = -0.6;               // beach height at the outer edge
   const BEACH_TOP = 0.7;             // beach height at the foot of the hill
   const OUT_N = 64;                  // outline lookup resolution
@@ -1366,7 +1369,9 @@
     }
     return true;
   }
-  function placeUpstream(isl, side) {
+  // `first`: the very first island comes ~100 m upstream on the closest safe line, so it arrives
+  // within a few minutes even at drift speed and passes close enough to swim to.
+  function placeUpstream(isl, side, first) {
     windDir(_w);
     const raftR = raftRadius();
     for (let t = 0; t < 10; t++) {
@@ -1374,10 +1379,14 @@
       if (t >= 5 && !side) s = -s;
       // 28–60 m to the side, but always far enough that the shore misses the raft by > SAFE_GAP
       const minLat = Math.max(28, isl.radius + raftR + SAFE_GAP + 1);
-      const lateral = G.rand(minLat, Math.min(Math.max(60, minLat), minLat + 24));
-      const along = SPAWN_DIST + G.rand(-10, 15) + (t % 5) * 45;
+      const lateral = first ? minLat + G.rand(0, 4) : G.rand(minLat, Math.min(Math.max(60, minLat), minLat + 24));
+      const along = first ? FIRST_DIST + G.rand(-5, 10) + (t % 5) * 30 : SPAWN_DIST + G.rand(-10, 15) + (t % 5) * 45;
       const x = _w.x * along - _w.z * lateral * s, z = _w.z * along + _w.x * lateral * s;
-      if (clearOfOthers(isl, x, z)) { isl.position.set(x, 0, z); isl.side = s; lastSide = s; return true; }
+      if (clearOfOthers(isl, x, z)) {
+        isl.position.set(x, 0, z); isl.side = s; lastSide = s;
+        isl.lat = lateral * s;                 // planned signed offset from the raft's passing line
+        return true;
+      }
     }
     return false;
   }
@@ -1416,7 +1425,7 @@
       isl.position.set(Number(opts.position.x), 0, Number(opts.position.z));
     } else if (opts.decor) placeDecor(isl);
     else if (opts.near) placeNear(isl, opts.side);
-    else if (!placeUpstream(isl, opts.side)) {
+    else if (!placeUpstream(isl, opts.side, !!opts.auto && spawnedCount === 0)) {
       if (opts.auto) { destroyIsland(isl); return null; }
       windDir(_w);
       const lat = isl.radius + raftRadius() + 20, along = SPAWN_DIST + 120;
@@ -1424,7 +1433,7 @@
     }
     isl.decor = !!opts.decor;
     const far = Math.hypot(isl.position.x, isl.position.z) - isl.radius > 150;
-    isl.rise = far && !opts.restored ? 0 : 1;
+    isl.rise = (far || opts.auto) && !opts.restored ? 0 : 1;
     isl.group.position.y = isl.rise < 1 ? -isl.sinkDepth : 0;
 
     list.push(isl);
@@ -1514,6 +1523,31 @@
     isl.position.x += nx * push; isl.position.z += nz * push;
   }
 
+  // Ground-fixed islands travel along -raft.velocity, but the wind slowly turns (±25°), which would
+  // swing an island that is still far upstream tens of metres off its planned passing line. Pull its
+  // sideways offset (perpendicular to the current motion) back towards isl.lat, gently.
+  function keepOnLine(isl, dt, raftR) {
+    if (!Number.isFinite(isl.lat) || isl.playerShore < 20) return;
+    const sp = Math.hypot(vel.x, vel.z);
+    if (sp < 0.02) return;
+    const dx = vel.x / sp, dz = vel.z / sp;
+    if (isl.position.x * dx + isl.position.z * dz >= -isl.radius) return;   // passing / gone by
+    const need = isl.radius + raftR + SAFE_GAP + 1;
+    const target = (isl.lat < 0 ? -1 : 1) * Math.max(Math.abs(isl.lat), need);
+    const px = dz, pz = -dx;                                  // same side convention as placeUpstream
+    const lat = isl.position.x * px + isl.position.z * pz;
+    const maxStep = (LAT_STEER + 0.2 * sp) * dt;
+    const step = G.clamp(target - lat, -maxStep, maxStep);
+    isl.position.x += px * step; isl.position.z += pz * step;
+  }
+
+  // Predicted gap between the shore and the raft when the island passes by.
+  function passingShore(isl) {
+    const raftR = raftRadius();
+    if (Number.isFinite(isl.lat)) return Math.max(Math.abs(isl.lat), isl.radius + raftR + SAFE_GAP + 1) - isl.radius;
+    return closestApproach(isl) - isl.radius;
+  }
+
   function playerOn(isl) {
     const P = G.player;
     if (!P || !P.onGround) return false;
@@ -1527,9 +1561,13 @@
     isl.near = true;
     G.events.emit('island:near', { island: isl, name: isl.name, distance: Math.max(0, Math.round(shore)) });
     G.notify('Na obzoru je ostrov: ' + isl.name, 'info');
-    if (!I._nearHintShown) {
+    const close = passingShore(isl) < SWIM_HINT_DIST;
+    if (close && !I._nearHintShown) {
       I._nearHintShown = true;
       G.notify('Doplav k němu – najdeš tam palmové listy, kokosy a kameny.', 'info');
+    } else if (!close && !I._farHintShown) {
+      I._farHintShown = true;
+      G.notify('Ostrov je daleko – s plachtou ho doženeš příště.', 'info');
     }
   }
   function onVisit(isl) {
@@ -1579,6 +1617,7 @@
     lastSide = Math.random() < 0.5 ? -1 : 1;
     vel.set(0, 0, 0);
     I._nearHintShown = false;
+    I._farHintShown = false;
   }
 
   function save() {
@@ -1591,6 +1630,7 @@
         seed: isl.seed, name: isl.name, gen: isl.gen,
         x: Math.round(isl.position.x * 100) / 100, z: Math.round(isl.position.z * 100) / 100,
         near: isl.near ? 1 : 0, visited: isl.visited ? 1 : 0,
+        lat: Number.isFinite(isl.lat) ? Math.round(isl.lat * 10) / 10 : undefined,
         palms: picked, rocks: isl.rocks.map((r) => r.uses), wreck: isl.wreck && isl.wreck.looted ? 1 : 0,
       });
     }
@@ -1611,6 +1651,7 @@
       spawnedCount = Math.max(0, spawnedCount - 1);        // not a new island
       isl.near = !!s.near;
       isl.visited = !!s.visited;
+      if (Number.isFinite(Number(s.lat)) && s.lat !== null) isl.lat = Number(s.lat);
       if (isl.near) I._nearHintShown = true;
       const picked = Number(s.palms) || 0;
       isl.palms.forEach((p, i) => {
@@ -1661,6 +1702,7 @@
       if (isl.decor) { removeIsland(isl); continue; }      // menu scenery never enters a game
       isl.position.x += vel.x * dt;
       isl.position.z += vel.z * dt;
+      keepOnLine(isl, dt, raftR);
       keepClear(isl, dt, raftR);
 
       // rise out of the haze / sink away

@@ -32,7 +32,7 @@
   const HOOK_MIN_D = 6, HOOK_MAX_D = 22;
   const HOOK_GRAV = 16;               // a little floaty so the arc reads well
   const HOOK_REEL = 5;                // m/s
-  const HOOK_ATTACH = 1.3;            // m
+  const HOOK_ATTACH = 1.8;            // m
   const HOOK_CATCH = 1.5;             // m from the player → collected
   const HOOK_ROPE_MAX = 28;           // the hook trails behind when drifting further
   const HOOK_MAX_ATTACHED = 8;
@@ -606,7 +606,7 @@
     from: new THREE.Vector3(),
     retFrom: new THREE.Vector3(),
     dirX: 1, dirZ: 0, lastDirX: 0, lastDirZ: -1,
-    vh: 0, vy0: 0, t: 0, T: 1,
+    vh: 0, vy0: 0, t: 0, T: 1, driftX: 0, driftZ: 0,
     chargeT: 0, reeling: false, charged: true,
     retT: 0, retDur: 0.4, retArc: 0.8, retCollect: false,
     reelSfxT: 0, splashT: 0, landT: 0, spin: 0, yaw: 0, side: 0,
@@ -940,6 +940,12 @@
       // partly taken: the rest stays in the bundle
       d.count = left[0][1];
       d.label = labelFor(d);
+      if (d.flying) {
+        // it was reeled in: the rest falls back into the sea where the hook left the water
+        d.attached = d.hooked = false;
+        d.position.copy(hook.retFrom);
+        releaseItem(d);
+      }
       sfx('pickup', pos, toStorage ? 0.4 : 0.8);
       fx('sparkle', pos, d.itemColor || 0xffd27a);
       return true;
@@ -1200,6 +1206,12 @@
     const D = Math.max(1, Math.hypot(dx, dz));
     hook.dirX = dx / D; hook.dirZ = dz / D;
     const T = 0.42 + D * 0.034;
+    // the water carries the hook during the flight, just like the debris under the ring,
+    // so a ring placed on an item lands on it
+    const dv = driftVel();
+    hook.driftX = dv.x; hook.driftZ = dv.z;
+    _land.x += dv.x * T; _land.z += dv.z * T;
+    _land.y = waveH(_land.x, _land.z);
     hook.T = T;
     hook.vh = D / T;
     hook.vy0 = (_land.y - hook.from.y + 0.5 * HOOK_GRAV * T * T) / T;
@@ -1353,7 +1365,8 @@
     if (st === 'flying') {
       hook.t += dt;
       const t = hook.t;
-      const x = hook.from.x + hook.dirX * hook.vh * t, z = hook.from.z + hook.dirZ * hook.vh * t;
+      const x = hook.from.x + (hook.dirX * hook.vh + (hook.driftX || 0)) * t;
+      const z = hook.from.z + (hook.dirZ * hook.vh + (hook.driftZ || 0)) * t;
       const y = hook.from.y + hook.vy0 * t - 0.5 * HOOK_GRAV * t * t;
       hook.pos.set(x, y, z);
       hook.spin += dt * 11;
@@ -1576,7 +1589,7 @@
       lmb = false;
       hook.reeling = false;
       if (hook.state === 'charging') {
-        if (G.uiBlocking && G.uiBlocking()) abortCharge();
+        if (G.paused || G.state !== 'playing' || (G.uiBlocking && G.uiBlocking())) abortCharge();
         else throwHook();
       }
     },

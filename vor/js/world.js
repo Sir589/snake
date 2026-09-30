@@ -113,7 +113,8 @@
 
   // Internal state
   let windAngle0 = 0, windClock = 0;
-  let stormTarget = 0, stormRemain = 0, stormCalm = 150, lightningT = 8, stormHitT = 18;
+  let stormTarget = 0, stormRemain = 0, stormCalm = 150, lightningT = 8, stormHitT = 6;
+  let stormSpill = false;   // this storm will wash one stack out of a net (20 % of storms)
   let thunderT = -1, thunderVol = 1;
   let flash = 0, flashAge = 10, boltT = 0;
   let clock = 0;                 // cosmetic clock (all states)
@@ -415,6 +416,7 @@
     uniform vec3 uLightDir;
     uniform vec3 uLightCol;
     uniform float uSpec;
+    uniform float uSpark;        // weight of the sharp glitter term (low under the moon)
     uniform float uFoamThr;
     uniform float uAmp;
     uniform float uStorm;
@@ -484,35 +486,43 @@
         float s2 = s1 * s1;
         s2 *= s2;
         s2 *= s2;
-        col += uLightCol * uSpec * (s2 * 7.0 + s1 * 0.55);
+        col += uLightCol * uSpec * (s2 * 7.0 * uSpark + s1 * 0.55);
 
         // foam: crests, storm whitecaps streaked along the wind, and a lapping fringe around the raft
         // foam noise: fine (8 m tile) + coarse (20 m tile); foam grows into patches with holes
         float fn = n1.b * 0.6 + n2.b * 0.4;
         float crest = smoothstep(uFoamThr, uFoamThr + 0.3 * uAmp, vH);
         float ft = 0.8 - 0.24 * crest;
-        float foam = (smoothstep(ft, ft + 0.035, fn) + (1.0 - smoothstep(0.0, 0.03, abs(fn - ft + 0.05))) * 0.45) * min(crest * 4.0, 1.0);
+        // soft-edged crest patches (wide band) with a faint rim, not hard paper cut-outs
+        float foam = (smoothstep(ft, ft + 0.1, fn) + (1.0 - smoothstep(0.0, 0.06, abs(fn - ft + 0.05))) * 0.3) * min(crest * 4.0, 1.0);
         if (uStorm > 0.01) {
           vec2 ws = vec2(dot(q, uWind), dot(q, vec2(-uWind.y, uWind.x)));
           float sn = texture2D(uNoise, ws * vec2(0.025, 0.12) + uScroll.xy * 0.4).b * 0.7 + fn * 0.3;
           float lift = smoothstep(-0.05 * uAmp, 0.4 * uAmp, vH) * uStorm;
           float st = 0.8 - 0.14 * lift;
-          foam += smoothstep(st, st + 0.04, sn) * min(lift * 3.0, 1.0) * 0.85;
+          foam += smoothstep(st, st + 0.14, sn) * min(lift * 3.0, 1.0) * 0.85;
         }
+        // fine noise (2.4 m tile): breaks the patch interiors into bubbly lace; also drives the raft fringe
+        float fine = texture2D(uNoise, q * 0.42 + uScroll.zw * 2.0).b;
+        foam = clamp(foam, 0.0, 1.0) * (0.4 + 0.6 * smoothstep(0.3, 0.72, fine));
+        float lap = 0.0;
         if (vOcc > 0.05) {
           // lacy foam lines lapping around the raft edges
           float band = smoothstep(0.12, 0.24, vOcc) * (1.0 - smoothstep(0.44, 0.52, vOcc));
-          float fine = texture2D(uNoise, q * 0.42 + uScroll.zw * 2.0).b;
           float wob = 0.07 * sin(uTime * 1.9 + vWorld.x * 1.3 + vWorld.z * 0.9);
           float lace = 1.0 - smoothstep(0.0, 0.05, abs(fine - 0.5 + wob));
-          foam += band * (lace * 0.8 + smoothstep(0.78, 0.82, fine + wob) * 0.6);
+          lap = band * (lace * 0.8 + smoothstep(0.78, 0.82, fine + wob) * 0.6);
           col *= 1.0 - smoothstep(0.45, 0.75, vOcc) * 0.5;
         }
-        foam = clamp(foam, 0.0, 1.0) * (1.0 - clamp(dist * 0.002 - 0.25, 0.0, 0.75));
-        col = mix(col, uFoamCol * (0.85 + 0.25 * NdL), foam * 0.92);
+        float fade = 1.0 - clamp(dist * 0.002 - 0.25, 0.0, 0.75);
+        foam *= fade;
+        lap = clamp(lap, 0.0, 1.0) * fade;
+        // sea foam stays translucent (the water body shows through); the raft fringe may be brighter
+        float foamMix = min(foam * 0.75 + lap * 0.92, 0.92);
+        col = mix(col, uFoamCol * (0.85 + 0.25 * NdL), foamMix);
         col += uFlash * uFlashCol * (0.15 + fres * 0.5);
 
-        alpha = clamp(0.6 + fres * 0.9 + foam + dist * 0.025 + vOcc, 0.0, 1.0);
+        alpha = clamp(0.6 + fres * 0.9 + foam * 0.5 + lap + dist * 0.025 + vOcc, 0.0, 1.0);
         // soft highlight roll-off so the sun glitter does not clip into flat white blobs
         col = col / (1.0 + max(max(col.r, max(col.g, col.b)) - 1.0, 0.0) * 0.5);
       } else {
@@ -812,7 +822,7 @@
           uNoise: { value: noiseTex }, uGo: { value: new THREE.Vector2() }, uScroll: { value: new THREE.Vector4() },
           uWind: { value: new THREE.Vector2(1, 0) },
           uDeep: { value: new THREE.Color() }, uScat: { value: new THREE.Color() }, uFoamCol: { value: new THREE.Color() },
-          uSpec: { value: 1 }, uFoamThr: { value: 0.4 }, uAmp: { value: ampSum },
+          uSpec: { value: 1 }, uSpark: { value: 1 }, uFoamThr: { value: 0.4 }, uAmp: { value: ampSum },
           uFogDensity: { value: 0.0025 }, uFlash: { value: 0 }, uFlashCol: { value: FLASH_COL },
           uShallow: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
           uShallowCol: { value: new THREE.Color() },
@@ -1438,7 +1448,8 @@
     stormTarget = 1;
     stormRemain = duration || G.rand(60, 120);
     lightningT = G.rand(5, 10);
-    stormHitT = G.rand(14, 24);
+    stormHitT = G.rand(3, 6);           // counts down only while storm > 0.65: first wave soon after the peak
+    stormSpill = G.chance(0.2);
     G.events.emit('world:storm', { active: true });
   }
   function endStorm() {
@@ -1571,7 +1582,9 @@
     ou.uDeep.value.copy(cDeep);
     ou.uScat.value.copy(cScat);
     ou.uFoamCol.value.setRGB(0.62 + 0.28 * L, 0.74 + 0.21 * L, 0.96).multiplyScalar(0.06 + 0.94 * L * L);
-    ou.uSpec.value = (1 - st * 0.75) * (sunI >= moonI ? 1 : 0.8);
+    // the moon keeps a narrow glitter path but no wide blown-out glints (moody nights)
+    ou.uSpec.value = (1 - st * 0.75) * (sunI >= moonI ? 1 : 0.35);
+    ou.uSpark.value = sunI >= moonI ? 1 : 0.4;
     ou.uFogDensity.value = density;
     ou.uFlash.value = fl;
 
@@ -1673,6 +1686,7 @@
       updateWaveUniforms();
     };
     G.debug.lightning = () => strikeLightning();
+    G.debug.stormSpill = () => spillFromNet();
 
     updateWind();
     updateDrift();
@@ -1695,7 +1709,8 @@
     stormRemain = 0;
     stormCalm = G.rand(60, 260);
     lightningT = 8;
-    stormHitT = 18;
+    stormHitT = 6;
+    stormSpill = false;
     thunderT = -1;
     flash = 0;
     flashAge = 10;
@@ -1791,22 +1806,55 @@
       thunderT -= dt;
       if (thunderT < 0) G.sfx('thunder', { volume: thunderVol });
     }
-    // big storm waves batter the raft edges now and then
+    // big storm waves batter the raft edges (raft.js keeps the last tile at >= 1 hp)
     if (world.storm > 0.65 && G.raft && typeof G.raft.randomEdgeTile === 'function' && typeof G.raft.damageTile === 'function') {
       stormHitT -= dt;
       if (stormHitT <= 0) {
-        stormHitT = G.rand(14, 24);
+        stormHitT = G.rand(8, 14);
         const tile = G.raft.randomEdgeTile();
         if (tile) {
           if (typeof G.raft.tileCenter === 'function') {
             G.raft.tileCenter(tile, _v2);
-            fx.splash(_v2, 2);
+            fx.splash(_v2, 2.4);
             G.sfx('splash_big', { position: _v2 });
           }
-          G.raft.damageTile(tile, G.randInt(5, 9), 'storm');
+          G.raft.damageTile(tile, G.randInt(8, 14), 'storm');
         }
+        if (stormSpill && spillFromNet()) stormSpill = false;
       }
     }
+  }
+
+  // A big wave washes one stack out of a net; it floats away downstream (it can be hooked back).
+  function spillFromNet() {
+    const R = G.raft;
+    if (!R || typeof R.findStructures !== 'function' || typeof R.tileCenter !== 'function') return false;
+    if (!G.debris || typeof G.debris.spawnItem !== 'function') return false;
+    const nets = R.findStructures('net').filter((n) => n && n.tile && n.data && n.data.storage &&
+      Array.isArray(n.data.storage.slots) && n.data.storage.slots.some((sl) => sl && sl.count > 0));
+    if (!nets.length) return false;
+    const net = G.pick(nets);
+    const slots = net.data.storage.slots;
+    const full = [];
+    for (let k = 0; k < slots.length; k++) if (slots[k] && slots[k].count > 0) full.push(k);
+    const k = G.pick(full);
+    const slot = slots[k];
+    // drop it past the downstream edge of the raft so no net catches it straight back
+    R.tileCenter(net.tile, _v2);
+    const wx = world.windDir.x, wz = world.windDir.z;
+    const along = -(_v2.x * wx + _v2.z * wz);
+    const rad = typeof R.radius === 'function' ? Number(R.radius()) || 3 : 3;
+    const out = Math.max(3, rad + 4 - along);
+    _v2.x -= wx * out;
+    _v2.z -= wz * out;
+    _v2.y = 0;
+    if (!G.debris.spawnItem(slot.id, slot.count, _v2)) return false;
+    slots[k] = null;
+    fx.splash(_v2, 1.2);
+    G.events.emit('storage:changed', { slots });
+    const name = G.items && typeof G.items.name === 'function' ? G.items.name(slot.id) : slot.id;
+    G.notify('Vlna spláchla ze sítě: ' + name + ' ×' + slot.count, 'warn');
+    return true;
   }
 
   function frame(dt) {

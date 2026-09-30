@@ -456,7 +456,8 @@
 
   // ---------------------------------------------------------------------------
   // Tile visuals: planks over logs / barrels with rope lashings. Shared per
-  // (float variant, reinforced, damage state); one mesh + one draw call per tile.
+  // (float variant, reinforced, damage state); all tiles with the same key are drawn by one
+  // InstancedMesh ("bucket"), so tile draw calls stay at 2 × (keys in use) however big the raft gets.
   // ---------------------------------------------------------------------------
   const MISS = [{ a: 1, b: 4, br: 2 }, { a: 3, b: 0, br: 2 }, { a: 2, b: 4, br: 1 }];
   const PLANK_Z = [-0.8, -0.4, 0, 0.4, 0.8];
@@ -503,6 +504,9 @@
       const len = 1.97 + (rnd() - 0.5) * 0.04, jx = (rnd() - 0.5) * 0.03, jry = (rnd() - 0.5) * 0.025, jy = (rnd() - 0.5) * 0.006;
       if (state >= 2 && k === miss.a) continue;
       if (state >= 3 && k === miss.b) continue;
+      // dark sub-deck strip under each board (hides the sea in the plank gaps and tile seams;
+      // a missing board leaves a real hole). Top at 0.265, below the beam tops (0.28).
+      b.box(2.0, 0.02, 0.4, { y: 0.255, z: PLANK_Z[k], c: COL.beam, shade: shade * 0.45 });
       const cracked = state === 1 ? (k === miss.b || k === miss.br) : state >= 2;
       const reg = cracked ? REG.crack : REG.wood;
       const z = PLANK_Z[k];
@@ -543,12 +547,78 @@
     const r = t.hp / t.maxHp;
     return r > 0.75 ? 0 : r > 0.5 ? 1 : r > 0.25 ? 2 : 3;
   }
+  // Instanced tile buckets: key (variant, reinforced, state) -> { mesh: InstancedMesh, list: [tile] }.
+  // A tile's instance index is t.slot; t.mesh is its bucket's InstancedMesh.
+  const buckets = [];
+  const _tp = new THREE.Vector3(), _ts = new THREE.Vector3(), _tq = new THREE.Quaternion(), _tm = new THREE.Matrix4();
+  const _qFlip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), PI), _qId = new THREE.Quaternion();
+
+  function makeBucketMesh(geo, cap) {
+    const mesh = new THREE.InstancedMesh(geo, M.atlas, cap);
+    mesh.count = 0;
+    mesh.visible = false;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.name = 'raft-tiles';
+    return mesh;
+  }
+  function tileMatrix(t, ox, oy, oz, sc) {
+    _tp.set((t.i + 0.5) * TILE + ox, oy, (t.j + 0.5) * TILE + oz);
+    _ts.set(sc, sc, sc);
+    _tq.copy(t.flip ? _qFlip : _qId);
+    t.mesh.setMatrixAt(t.slot, _tm.compose(_tp, _tq, _ts));
+    t.mesh.instanceMatrix.needsUpdate = true;
+  }
+  function bucketChanged(bk) {
+    bk.mesh.count = bk.list.length;
+    bk.mesh.visible = bk.list.length > 0;
+    bk.mesh.instanceMatrix.needsUpdate = true;
+    bk.mesh.boundingSphere = null;                // recomputed lazily by the frustum test
+  }
+  function bucketInsert(t, key, geo) {
+    let bk = buckets[key];
+    if (!bk) {
+      bk = buckets[key] = { mesh: makeBucketMesh(geo, MAX_SPAN * MAX_SPAN), list: [] };
+      group.add(bk.mesh);
+    }
+    if (bk.list.length >= bk.mesh.instanceMatrix.count) {        // grow (only for odd saves)
+      const old = bk.mesh, mesh = makeBucketMesh(geo, old.instanceMatrix.count * 2);
+      mesh.instanceMatrix.array.set(old.instanceMatrix.array);
+      group.remove(old);
+      old.dispose();
+      group.add(mesh);
+      bk.mesh = mesh;
+      for (const o of bk.list) o.mesh = mesh;
+    }
+    t.bucket = bk;
+    t.slot = bk.list.length;
+    t.mesh = bk.mesh;
+    bk.list.push(t);
+    tileMatrix(t, 0, 0, 0, 1);
+    bucketChanged(bk);
+  }
+  function bucketRemove(t) {
+    const bk = t.bucket;
+    if (!bk) return;
+    const last = bk.list.pop();
+    if (last !== t) {
+      bk.list[t.slot] = last;
+      last.slot = t.slot;
+      bk.mesh.getMatrixAt(bk.list.length, _tm);   // the moved tile keeps its current (animated) matrix
+      bk.mesh.setMatrixAt(last.slot, _tm);
+    }
+    t.bucket = null;
+    t.slot = -1;
+    bucketChanged(bk);
+  }
+
   function refreshTile(t) {
     const st = tileState(t);
     const code = st + (t.reinforced ? 4 : 0);
     if (code !== t.dmg) {
       t.dmg = code;
-      t.mesh.geometry = tileGeometry(t.variant, t.reinforced, st);
+      bucketRemove(t);
+      bucketInsert(t, t.variant * 8 + code, tileGeometry(t.variant, t.reinforced, st));
     }
     return st;
   }
@@ -610,17 +680,9 @@
     const t = {
       i, j, hp: HP_NORMAL, maxHp: HP_NORMAL, reinforced: false, mesh: null, structure: null,
       variant: v < 6 ? 0 : v < 8 ? 1 : 2, flip: ((h >>> 8) & 1) === 1,
-      dmg: -1, pop: 1, shake: 0, fxAt: -1e9, animating: false,
+      dmg: -1, pop: 1, shake: 0, fxAt: -1e9, animating: false, bucket: null, slot: -1,
     };
-    const mesh = new THREE.Mesh(tileGeometry(t.variant, false, 0), M.atlas);
-    mesh.position.set((i + 0.5) * TILE, 0, (j + 0.5) * TILE);
-    mesh.rotation.y = t.flip ? PI : 0;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    mesh.userData.raftTile = t;
-    t.mesh = mesh;
-    refreshTile(t);
-    group.add(mesh);
+    refreshTile(t);                               // puts the tile into its instanced bucket (sets t.mesh)
     tiles.set(skey(i, j), t);
     grid.set(k, t);
     dirty = true;
@@ -635,7 +697,8 @@
 
   function removeTileInternal(t) {
     if (t.structure) removeStructure(t.structure, false);
-    group.remove(t.mesh);
+    bucketRemove(t);
+    t.animating = false;
     tiles.delete(skey(t.i, t.j));
     grid.delete(nkey(t.i, t.j));
     dirty = true;
@@ -2350,13 +2413,11 @@
         oy += (Math.random() - 0.5) * a * 0.5;
       }
       const cx = (t.i + 0.5) * TILE, cz = (t.j + 0.5) * TILE;
-      t.mesh.position.set(cx + ox, oy, cz + oz);
-      t.mesh.scale.setScalar(sc);
+      if (t.bucket) tileMatrix(t, ox, oy, oz, sc);
       if (t.structure && t.structure.object && t.structure._pop >= 1) t.structure.object.position.set(cx + ox, G.C.DECK_Y + oy, cz + oz);
       if (t.pop >= 1 && t.shake <= 0) {
         t.animating = false;
-        t.mesh.position.set(cx, 0, cz);
-        t.mesh.scale.setScalar(1);
+        if (t.bucket) { tileMatrix(t, 0, 0, 0, 1); t.mesh.boundingSphere = null; }
         if (t.structure && t.structure.object) t.structure.object.position.set(cx, G.C.DECK_Y, cz);
       }
     }
