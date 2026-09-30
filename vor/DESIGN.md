@@ -537,6 +537,11 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Fine building (ROADMAP 2).** build.js also keeps *pieces*: axis-aligned boxes `{ t, x0..x1, y0..y1, z0..z1, rot }`
+  (types with `fine: true`: prkenko 1×0.125×0.25, tram 1×0.25×0.25, sloup 0.25×1×0.25, pulblok 0.5³). x/z snap to
+  `G.build.fineStep` (0.25 or 0.5, key G), y to 12.5 cm; R turns planks/beams 90°. `heightAt`, `blocked` and
+  `solidAt` include pieces, so the player walks on them and furniture stands on them. API: `pieces`, `addPiece`,
+  `removePiece`, `pieceInBox`, `piecesNear`. Saved as `pieces: [[id, x0, y0, z0, rot]]`.
 - **Free placement (ROADMAP 1).** Structures sit anywhere: `s.x/s.z` (raft plane), `s.y` (metres above the deck
   top), `s.angle` (radians; hand placement uses 15° steps). `placeStructure(type, tile, rot, data, {x, y, z, angle})`
   places exactly there; without the last argument it uses the tile centre. A footprint table (`FOOT` in raft.js,

@@ -5,7 +5,11 @@
 //
 // Public: G.build = { blocks, types, selected, add(type,x,y,z,rot), remove(b, refund),
 //   heightAt(x,z,maxY), blocked(x,z,yLow,yHigh,r), cellFree(x,y,z), blockAt(x,y,z),
-//   solidTop(b), solidAt(x,ly,z) }
+//   solidTop(b), solidAt(x,ly,z), pieces, addPiece(type,x0,y0,z0,rot), removePiece(p, refund),
+//   pieceInBox(x0,x1,y0,y1,z0,z1), piecesNear(x0,x1,z0,z1,out), fineStep }
+// Fine pieces (ROADMAP 2): planks, beams, posts and half blocks on a 25 cm (or 50 cm) grid. They are
+// axis-aligned boxes { t, x0..x1, y0..y1, z0..z1, rot } in the same raft-local space as blocks
+// (y in metres above the deck top); x/z snap to the grid, y to 12.5 cm.
 // Blocks live in raft-local integer cells: x,z are world metres (the raft never moves in XZ),
 // y counts metres above the deck top. They are children of G.raft.group so they bob with it.
 (function () {
@@ -23,6 +27,10 @@
     { id: 'zaklad', name: 'Základ voru', icon: '🛟', raft: true },
     { id: 'blok', name: 'Dřevěný blok', icon: '🟫', shape: 'cube', cost: { prkno: 1 }, tex: 'planks', color: 0xb98a58 },
     { id: 'deska', name: 'Podlaha', icon: '▬', shape: 'slab', cost: { prkno: 1 }, tex: 'planks', color: 0xc49a66 },
+    { id: 'prkenko', name: 'Prkénko', icon: '📏', fine: true, size: [1, 0.125, 0.25], cost: { prkno: 1 }, tex: 'planks', color: 0xcfa36c, rot: true },
+    { id: 'tram', name: 'Trám', icon: '🪵', fine: true, size: [1, 0.25, 0.25], cost: { prkno: 1 }, tex: 'planks', color: 0x8c6238, rot: true },
+    { id: 'sloup', name: 'Sloup', icon: '🏛️', fine: true, size: [0.25, 1, 0.25], cost: { prkno: 1 }, tex: 'planks', color: 0x9a6a3c },
+    { id: 'pulblok', name: 'Půlblok', icon: '🧱', fine: true, size: [0.5, 0.5, 0.5], cost: { prkno: 1 }, tex: 'planks', color: 0xb98a58 },
     { id: 'schody', name: 'Schody', icon: '📶', shape: 'stairs', cost: { prkno: 2 }, tex: 'planks', color: 0xa87a4a, rot: true },
     { id: 'okno', name: 'Okno', icon: '🪟', shape: 'pane', cost: { plast: 2 }, tex: 'glass', color: 0xffffff },
     { id: 'dvere', name: 'Dveře', icon: '🚪', shape: 'door', cost: { prkno: 3 }, tex: 'door', color: 0x9a6a3c, rot: true, h: 2 },
@@ -38,7 +46,10 @@
     { id: 'zelena', name: 'Zelený blok', icon: '🟩', shape: 'cube', cost: { prkno: 1 }, tex: 'painted', color: 0x4f9a4a },
   ];
   const TYPE = Object.create(null);
-  TYPES.forEach((t, i) => { t.index = i; TYPE[t.id] = t; });
+  TYPES.forEach((t, i) => { t.index = i; TYPE[t.id] = t; if (t.fine) t.shape = 'piece_' + t.id; });
+  const FINE_STEPS = [0.25, 0.5];
+  const MAX_PIECES = 3000;
+  const EPS = 0.004;
 
   const B = (G.build = {
     types: TYPES,
@@ -46,6 +57,10 @@
     selected: 0,
     rotOffset: 0,
     add: null, remove: null, heightAt: null, blocked: null, cellFree: null, blockAt: null, solidTop: null, solidAt: null,
+    pieces: new Set(),
+    fineStep: 0.25,
+    fineRot: 0,
+    addPiece: null, removePiece: null, pieceInBox: null, piecesNear: null,
   });
 
   // cell occupancy "x,y,z" -> block ; columns "x,z" -> Set(block)
@@ -53,6 +68,9 @@
   const cols = new Map();
   const ck = (x, y, z) => x + ',' + y + ',' + z;
   const colk = (x, z) => x + ',' + z;
+  // fine pieces by the 1 m columns they overlap: "x,z" -> Set(piece)
+  const pcols = new Map();
+  const q8 = (v) => Math.round(v * 8) / 8;          // positions are multiples of 12.5 cm
 
   let root = null;            // group inside the raft group
   let ghost = null, ghostMat = null, outline = null;
@@ -92,16 +110,26 @@
   // ---------------------------------------------------------------------------
   // Highest standable block surface under (x, z) that is <= maxY (world Y).
   function heightAt(x, z, maxY) {
-    if (!B.blocks.size) return null;
-    const col = cols.get(colk(Math.floor(x), Math.floor(z)));
-    if (!col) return null;
-    const base = deckBase(), px = x - Math.floor(x), pz = z - Math.floor(z);
+    if (!B.blocks.size && !B.pieces.size) return null;
+    const base = deckBase();
     const lim = maxY === undefined ? Infinity : maxY;
     let best = null;
-    for (const b of col) {
-      if (!walkable(b)) continue;
-      const top = base + b.y + solidHeight(b, px, pz);
-      if (top <= lim && (best === null || top > best)) best = top;
+    const col = cols.get(colk(Math.floor(x), Math.floor(z)));
+    if (col) {
+      const px = x - Math.floor(x), pz = z - Math.floor(z);
+      for (const b of col) {
+        if (!walkable(b)) continue;
+        const top = base + b.y + solidHeight(b, px, pz);
+        if (top <= lim && (best === null || top > best)) best = top;
+      }
+    }
+    const pc = pcols.get(colk(Math.floor(x), Math.floor(z)));
+    if (pc) {
+      for (const p of pc) {
+        if (x < p.x0 - EPS || x > p.x1 + EPS || z < p.z0 - EPS || z > p.z1 + EPS) continue;
+        const top = base + p.y1;
+        if (top <= lim && (best === null || top > best)) best = top;
+      }
     }
     return best;
   }
@@ -109,19 +137,28 @@
   // Does the vertical slab (yLow..yHigh, world Y) around (x, z) with half-size r hit a solid block?
   const OFFS = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
   function blocked(x, z, yLow, yHigh, r) {
-    if (!B.blocks.size) return false;
+    if (!B.blocks.size && !B.pieces.size) return false;
     const base = deckBase();
     r = r === undefined ? 0.3 : r;
     for (let k = 0; k < OFFS.length; k++) {
       const sx = x + OFFS[k][0] * r, sz = z + OFFS[k][1] * r;
-      const col = cols.get(colk(Math.floor(sx), Math.floor(sz)));
-      if (!col) continue;
-      const px = sx - Math.floor(sx), pz = sz - Math.floor(sz);
-      for (const b of col) {
-        const h = solidHeight(b, px, pz);
-        if (h <= 0) continue;
-        const lo = base + b.y, hi = lo + h;
-        if (hi > yLow && lo < yHigh) return true;
+      const key = colk(Math.floor(sx), Math.floor(sz));
+      const col = cols.get(key);
+      if (col) {
+        const px = sx - Math.floor(sx), pz = sz - Math.floor(sz);
+        for (const b of col) {
+          const h = solidHeight(b, px, pz);
+          if (h <= 0) continue;
+          const lo = base + b.y, hi = lo + h;
+          if (hi > yLow && lo < yHigh) return true;
+        }
+      }
+      const pc = pcols.get(key);
+      if (pc) {
+        for (const p of pc) {
+          if (sx <= p.x0 || sx >= p.x1 || sz <= p.z0 || sz >= p.z1) continue;
+          if (base + p.y1 > yLow && base + p.y0 < yHigh) return true;
+        }
       }
     }
     return false;
@@ -141,12 +178,93 @@
   // Is the point (x, ly, z) — ly in metres above the deck top — inside a block? Returns the top of
   // that block's solid part at (x, z) (deck-relative), or null.
   function solidAt(x, ly, z) {
+    if (B.pieces.size) {
+      const pc = pcols.get(colk(Math.floor(x), Math.floor(z)));
+      if (pc) {
+        for (const p of pc) {
+          if (x >= p.x0 && x <= p.x1 && z >= p.z0 && z <= p.z1 && ly >= p.y0 && ly <= p.y1) return p.y1;
+        }
+      }
+    }
     if (!B.blocks.size) return null;
     const b = cells.get(ck(Math.floor(x), Math.floor(ly), Math.floor(z)));
     if (!b) return null;
     const h = b.t.shape === 'door' ? (b.open ? 0 : 2) : b.t.shape === 'lantern' ? 0.62 : solidHeight(b, x - Math.floor(x), z - Math.floor(z));
     const top = b.y + h;
     return ly >= b.y && ly <= top ? top : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fine pieces
+  // ---------------------------------------------------------------------------
+  function pieceSize(t, rot) { const z = t.size; return rot & 1 ? [z[2], z[1], z[0]] : [z[0], z[1], z[2]]; }
+  function forPieceCols(p, fn) {
+    for (let x = Math.floor(p.x0 + EPS); x <= Math.floor(p.x1 - EPS); x++) {
+      for (let z = Math.floor(p.z0 + EPS); z <= Math.floor(p.z1 - EPS); z++) fn(colk(x, z));
+    }
+  }
+  function addPiece(typeId, x0, y0, z0, rot) {
+    const t = TYPE[typeId];
+    if (!t || !t.fine || B.pieces.size >= MAX_PIECES) return null;
+    x0 = q8(Number(x0)); y0 = q8(Number(y0)); z0 = q8(Number(z0));
+    if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(z0) || y0 < 0 || y0 > MAX_Y) return null;
+    rot = t.rot ? (rot | 0) & 1 : 0;
+    const sz = pieceSize(t, rot);
+    const p = { t, rot, x0, y0, z0, x1: x0 + sz[0], y1: y0 + sz[1], z1: z0 + sz[2] };
+    if (pieceInBox(p.x0, p.x1, p.y0, p.y1, p.z0, p.z1)) return null;
+    B.pieces.add(p);
+    forPieceCols(p, (k) => { let set = pcols.get(k); if (!set) pcols.set(k, (set = new Set())); set.add(p); });
+    dirty.add(t.id);
+    return p;
+  }
+  function removePiece(p, refund) {
+    if (!p || !B.pieces.has(p)) return false;
+    B.pieces.delete(p);
+    forPieceCols(p, (k) => { const set = pcols.get(k); if (set) { set.delete(p); if (!set.size) pcols.delete(k); } });
+    dirty.add(p.t.id);
+    if (refund && p.t.cost) for (const id in p.t.cost) G.inventory.add(id, p.t.cost[id], 'refund');
+    return true;
+  }
+  // First piece whose box overlaps (x0..x1, y0..y1, z0..z1) by more than a hair, or null.
+  function pieceInBox(x0, x1, y0, y1, z0, z1) {
+    if (!B.pieces.size) return null;
+    for (let x = Math.floor(x0 + EPS); x <= Math.floor(x1 - EPS); x++) {
+      for (let z = Math.floor(z0 + EPS); z <= Math.floor(z1 - EPS); z++) {
+        const pc = pcols.get(colk(x, z));
+        if (!pc) continue;
+        for (const p of pc) {
+          if (p.x1 > x0 + EPS && p.x0 < x1 - EPS && p.y1 > y0 + EPS && p.y0 < y1 - EPS && p.z1 > z0 + EPS && p.z0 < z1 - EPS) return p;
+        }
+      }
+    }
+    return null;
+  }
+  // All pieces overlapping the columns of the rect (x0..x1, z0..z1) into out (deduplicated).
+  function piecesNear(x0, x1, z0, z1, out) {
+    out = out || [];
+    out.length = 0;
+    if (!B.pieces.size) return out;
+    for (let x = Math.floor(x0); x <= Math.floor(x1); x++) {
+      for (let z = Math.floor(z0); z <= Math.floor(z1); z++) {
+        const pc = pcols.get(colk(x, z));
+        if (pc) for (const p of pc) if (out.indexOf(p) < 0) out.push(p);
+      }
+    }
+    return out;
+  }
+  // Does a solid block overlap the box? (for fine pieces; blocks count with their solid height)
+  function blockInBox(x0, x1, y0, y1, z0, z1) {
+    if (!B.blocks.size) return null;
+    for (let x = Math.floor(x0 + EPS); x <= Math.floor(x1 - EPS); x++) {
+      for (let z = Math.floor(z0 + EPS); z <= Math.floor(z1 - EPS); z++) {
+        for (let y = Math.max(0, Math.floor(y0 + EPS) - 1); y <= Math.floor(y1 - EPS); y++) {
+          const b = cells.get(ck(x, y, z));
+          if (!b) continue;
+          if (b.y + solidTop(b) > y0 + EPS && b.y < y1 - EPS) return b;
+        }
+      }
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -306,6 +424,8 @@
     ]);
     // door panel hinged on its left edge (x = -0.5), 2 m tall, thin in z
     geos.door = box(0, 1, 0, 2, -0.06, 0.06);
+    // fine pieces: boxes centred on the origin (instances are placed at the piece centre)
+    for (const t of TYPES) if (t.fine) geos[t.shape] = new THREE.BoxGeometry(t.size[0], t.size[1], t.size[2]);
   }
   function makeMaterials(T) {
     for (const t of TYPES) {
@@ -340,7 +460,8 @@
     const t = TYPE[id];
     if (!t || t.shape === 'door') return;
     const list = [];
-    for (const b of B.blocks) if (b.t === t) list.push(b);
+    if (t.fine) { for (const p of B.pieces) if (p.t === t) list.push(p); }
+    else for (const b of B.blocks) if (b.t === t) list.push(b);
     let m = meshFor(t);
     if (list.length > m.instanceMatrix.count) {
       root.remove(m);
@@ -353,7 +474,8 @@
     }
     for (let i = 0; i < list.length; i++) {
       const b = list[i];
-      _p.set(b.x + 0.5, localBase() + b.y, b.z + 0.5);
+      if (t.fine) _p.set((b.x0 + b.x1) / 2, localBase() + (b.y0 + b.y1) / 2, (b.z0 + b.z1) / 2);
+      else _p.set(b.x + 0.5, localBase() + b.y, b.z + 0.5);
       _q.setFromAxisAngle(_up, b.rot * HALF_PI);
       _m.compose(_p, _q, _s);
       m.setMatrixAt(i, _m);
@@ -434,6 +556,7 @@
   }
   function clearAll() {
     for (const b of Array.from(B.blocks)) removeBlock(b, false);
+    for (const p of Array.from(B.pieces)) removePiece(p, false);
     for (const id in meshes) { meshes[id].count = 0; meshes[id].instanceMatrix.needsUpdate = true; }
     dirty.clear();
   }
@@ -445,6 +568,10 @@
   B.blockAt = blockAt;
   B.solidTop = solidTop;
   B.solidAt = solidAt;
+  B.addPiece = addPiece;
+  B.removePiece = removePiece;
+  B.pieceInBox = pieceInBox;
+  B.piecesNear = piecesNear;
 
   // ---------------------------------------------------------------------------
   // Aiming: voxel ray march from the eye
@@ -500,6 +627,7 @@
     const x = aim.px, y = aim.py, z = aim.pz, h = t.h || 1;
     if (y < 0 || y + h - 1 > MAX_Y) { aim.reason = 'Tak vysoko stavět nejde.'; return aim; }
     for (let k = 0; k < h; k++) if (cells.has(ck(x, y + k, z))) { aim.reason = 'Tady už něco je.'; return aim; }
+    if (pieceInBox(x, x + 1, y, y + (t.shape === 'slab' ? 0.2 : h), z, z + 1)) { aim.reason = 'Tady už něco je.'; return aim; }
     if (!supported(x, y, z)) { aim.reason = 'Blok musí stát na voru nebo u jiného bloku.'; return aim; }
     if (!nearRaft(x, z)) { aim.reason = 'Tak daleko od voru stavět nejde.'; return aim; }
     if (G.raft.structureInBox && G.raft.structureInBox(x, x + 1, y, y + (t.shape === 'slab' ? 0.2 : h), z, z + 1)) { aim.reason = 'Tady stojí vybavení voru.'; return aim; }
@@ -513,6 +641,111 @@
     const base = deckBase(), p = P.position, r = 0.32;
     return p.x + r > x && p.x - r < x + 1 && p.z + r > z && p.z - r < z + 1 &&
       p.y + 1.8 > base + y && p.y < base + y + h;
+  }
+
+  // Ray (_eye, _dir) against the box; entry distance and face normal into fine.t / fine.n*.
+  const fine = { ok: false, reason: '', hit: null, hitKind: '', x0: 0, y0: 0, z0: 0, rot: 0, t: 0, nx: 0, ny: 0, nz: 0 };
+  const _ray = { t: 0, nx: 0, ny: 0, nz: 0 };
+  function rayBox(ox, oy, oz, x0, y0, z0, x1, y1, z1) {
+    let tmin = -Infinity, tmax = Infinity, nx = 0, ny = 0, nz = 0;
+    const d = [_dir.x, _dir.y, _dir.z], o = [ox, oy, oz], lo = [x0, y0, z0], hi = [x1, y1, z1];
+    for (let a = 0; a < 3; a++) {
+      if (Math.abs(d[a]) < 1e-9) { if (o[a] < lo[a] || o[a] > hi[a]) return false; continue; }
+      let t1 = (lo[a] - o[a]) / d[a], t2 = (hi[a] - o[a]) / d[a], s = -1;
+      if (t1 > t2) { const tt = t1; t1 = t2; t2 = tt; s = 1; }
+      if (t1 > tmin) { tmin = t1; nx = a === 0 ? s : 0; ny = a === 1 ? s : 0; nz = a === 2 ? s : 0; }
+      if (t2 < tmax) tmax = t2;
+      if (tmin > tmax || tmax < 0) return false;
+    }
+    if (tmin < 0) return false;
+    _ray.t = tmin; _ray.nx = nx; _ray.ny = ny; _ray.nz = nz;
+    return true;
+  }
+  // Nearest thing the eye ray hits: a fine piece, a block (its solid part) or the deck.
+  function fineRaycast() {
+    const base = deckBase();
+    const ox = _eye.x, oy = _eye.y - base, oz = _eye.z;
+    let best = REACH, kind = '', obj = null, nx = 0, ny = 0, nz = 0;
+    for (const p of B.pieces) {
+      if (rayBox(ox, oy, oz, p.x0, p.y0, p.z0, p.x1, p.y1, p.z1) && _ray.t < best) {
+        best = _ray.t; kind = 'piece'; obj = p; nx = _ray.nx; ny = _ray.ny; nz = _ray.nz;
+      }
+    }
+    // blocks: march the cells, test each block's solid box
+    let cx = Math.floor(ox), cy = Math.floor(oy), cz = Math.floor(oz);
+    const sx = Math.sign(_dir.x), sy = Math.sign(_dir.y), sz = Math.sign(_dir.z);
+    const tdx = sx ? Math.abs(1 / _dir.x) : Infinity, tdy = sy ? Math.abs(1 / _dir.y) : Infinity, tdz = sz ? Math.abs(1 / _dir.z) : Infinity;
+    let tmx = sx ? ((sx > 0 ? cx + 1 - ox : ox - cx) * tdx) : Infinity;
+    let tmy = sy ? ((sy > 0 ? cy + 1 - oy : oy - cy) * tdy) : Infinity;
+    let tmz = sz ? ((sz > 0 ? cz + 1 - oz : oz - cz) * tdz) : Infinity;
+    let tcur = 0;
+    for (let i = 0; i < 64 && tcur < best; i++) {
+      const b = cells.get(ck(cx, cy, cz));
+      if (b && rayBox(ox, oy, oz, b.x, b.y, b.z, b.x + 1, b.y + solidTop(b), b.z + 1) && _ray.t < best) {
+        best = _ray.t; kind = 'block'; obj = b; nx = _ray.nx; ny = _ray.ny; nz = _ray.nz;
+        break;
+      }
+      if (tmx < tmy && tmx < tmz) { cx += sx; tcur = tmx; tmx += tdx; }
+      else if (tmy < tmz) { cy += sy; tcur = tmy; tmy += tdy; }
+      else { cz += sz; tcur = tmz; tmz += tdz; }
+      if (cy < -1) break;
+    }
+    // deck top (y = 0) over a raft tile
+    if (_dir.y < -1e-4) {
+      const td = -oy / _dir.y;
+      if (td > 0 && td < best && tileUnder(Math.floor(ox + _dir.x * td), Math.floor(oz + _dir.z * td))) {
+        best = td; kind = 'deck'; obj = null; nx = 0; ny = 1; nz = 0;
+      }
+    }
+    fine.hitKind = kind; fine.hit = obj; fine.t = best; fine.nx = nx; fine.ny = ny; fine.nz = nz;
+    return kind;
+  }
+  function computeFineAim(t) {
+    fine.ok = false; fine.reason = '';
+    const P = G.player;
+    if (!P || !P.eye) return fine;
+    P.eye(_eye); P.forward(_dir);
+    const kind = fineRaycast();
+    if (!kind) { fine.reason = 'Namiř na vor, blok nebo díl.'; return fine; }
+    const base = deckBase();
+    const hx = _eye.x + _dir.x * fine.t, hy = _eye.y - base + _dir.y * fine.t, hz = _eye.z + _dir.z * fine.t;
+    const rot = t.rot ? B.fineRot & 1 : 0;
+    const sz = pieceSize(t, rot), st = B.fineStep;
+    const snap = (v) => q8(Math.round(v / st) * st);
+    let x0, y0, z0;
+    if (fine.ny > 0) { y0 = hy; x0 = snap(hx - sz[0] / 2); z0 = snap(hz - sz[2] / 2); }
+    else if (fine.ny < 0) { y0 = hy - sz[1]; x0 = snap(hx - sz[0] / 2); z0 = snap(hz - sz[2] / 2); }
+    else if (fine.nx) { x0 = fine.nx > 0 ? hx : hx - sz[0]; y0 = Math.max(0, hy - sz[1] / 2); z0 = snap(hz - sz[2] / 2); }
+    else { z0 = fine.nz > 0 ? hz : hz - sz[2]; y0 = Math.max(0, hy - sz[1] / 2); x0 = snap(hx - sz[0] / 2); }
+    x0 = q8(x0); y0 = q8(y0); z0 = q8(z0);
+    fine.x0 = x0; fine.y0 = y0; fine.z0 = z0; fine.rot = rot;
+    const x1 = x0 + sz[0], y1 = y0 + sz[1], z1 = z0 + sz[2];
+    if (y0 < 0) { fine.reason = 'Pod palubu se zatím stavět nedá.'; return fine; }
+    if (y1 > MAX_Y + 1) { fine.reason = 'Tak vysoko stavět nejde.'; return fine; }
+    if (!nearRaft(Math.floor((x0 + x1) / 2), Math.floor((z0 + z1) / 2))) { fine.reason = 'Tak daleko od voru stavět nejde.'; return fine; }
+    if (blockInBox(x0, x1, y0, y1, z0, z1) || pieceInBox(x0, x1, y0, y1, z0, z1)) { fine.reason = 'Tady už něco je.'; return fine; }
+    if (G.raft.structureInBox && G.raft.structureInBox(x0, x1, y0, y1, z0, z1)) { fine.reason = 'Tady stojí vybavení voru.'; return fine; }
+    if (!fineSupported(x0, x1, y0, y1, z0, z1)) { fine.reason = 'Díl musí stát na voru nebo se dotýkat jiného dílu či bloku.'; return fine; }
+    if (overlapsPlayerBox(x0, x1, y0, y1, z0, z1)) { fine.reason = 'Stojíš v cestě.'; return fine; }
+    fine.ok = true;
+    return fine;
+  }
+  // Touches the deck, a block or another piece (face contact is enough).
+  function fineSupported(x0, x1, y0, y1, z0, z1) {
+    const e = 0.02;
+    if (y0 < 0.01) {
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2;
+      if (tileUnder(Math.floor(mx), Math.floor(mz)) || tileUnder(Math.floor(x0 + e), Math.floor(z0 + e)) ||
+        tileUnder(Math.floor(x1 - e), Math.floor(z1 - e)) || tileUnder(Math.floor(x0 + e), Math.floor(z1 - e)) ||
+        tileUnder(Math.floor(x1 - e), Math.floor(z0 + e))) return true;
+    }
+    return !!(blockInBox(x0 - e, x1 + e, y0 - e, y1 + e, z0 - e, z1 + e) || pieceInBox(x0 - e, x1 + e, y0 - e, y1 + e, z0 - e, z1 + e));
+  }
+  function overlapsPlayerBox(x0, x1, y0, y1, z0, z1) {
+    const P = G.player;
+    if (!P || !P.position || P.inWater) return false;
+    const base = deckBase(), p = P.position, r = 0.32;
+    return p.x + r > x0 && p.x - r < x1 && p.z + r > z0 && p.z - r < z1 && p.y + 1.8 > base + y0 && p.y < base + y1;
   }
 
   function defaultRot() {
@@ -557,6 +790,28 @@
     } else ghost.visible = false;
   }
   function hideGhost() { if (ghost) ghost.visible = false; if (outline) outline.visible = false; }
+  function showFineGhost(t, afford) {
+    if (!ghost) return;
+    const h = fine.hit;
+    if (h && (fine.hitKind === 'piece' || fine.hitKind === 'block')) {
+      outline.visible = true;
+      if (fine.hitKind === 'piece') {
+        outline.position.set((h.x0 + h.x1) / 2, localBase() + h.y0, (h.z0 + h.z1) / 2);
+        outline.scale.set(h.x1 - h.x0, h.y1 - h.y0, h.z1 - h.z0);
+      } else {
+        outline.position.set(h.x + 0.5, localBase() + h.y, h.z + 0.5);
+        outline.scale.set(1, h.t.h || 1, 1);
+      }
+    } else outline.visible = false;
+    if (!fine.ok) { ghost.visible = false; return; }
+    const sz = pieceSize(t, fine.rot);
+    ghost.visible = true;
+    ghost.geometry = geos[t.shape];
+    ghost.position.set(fine.x0 + sz[0] / 2, localBase() + fine.y0 + sz[1] / 2, fine.z0 + sz[2] / 2);
+    ghost.rotation.set(0, fine.rot * HALF_PI, 0);
+    ghost.scale.set(1, 1, 1);
+    ghostMat.color.setHex(afford ? 0x6dff8e : 0xff5a4a);
+  }
 
   // ---------------------------------------------------------------------------
   // Palette strip (shown while the hammer is held)
@@ -671,6 +926,7 @@
         return;
       }
       if (hammer && hammer.hideVisuals && hammer.shown) hammer.hideVisuals();
+      if (t.fine) { updateFine(t, dt); return; }
       if (G.input.pressed('KeyR')) B.rotOffset = (B.rotOffset + 1) & 3;
       if (hammer && hammer.cooldown > 0) hammer.cooldown -= dt;
       if (hammer && hammer.animate) hammer.animate(dt);
@@ -689,9 +945,11 @@
       G.hud.setToolHint(h);
     },
     swing() { if (hammer) { hammer.swingT = 0; hammer.pending = null; } },
+    fineMode() { return !!TYPES[B.selected].fine; },
     primaryDown(slot) {
       const t = TYPES[B.selected];
       if (t.raft) return hammer && hammer.primaryDown(slot);
+      if (t.fine) { placeFine(t); return; }
       if (!aim.ok) { G.sfx('error', { volume: 0.4 }); return; }
       if (!G.inventory.hasAll(t.cost)) { G.sfx('error'); G.notify('Chybí ti: ' + costText(t.cost), 'warn'); return; }
       const b = addBlock(t.id, aim.px, aim.py, aim.pz, defaultRot(), false);
@@ -706,6 +964,7 @@
     primaryUp(slot) { if (TYPES[B.selected].raft && hammer) hammer.primaryUp(slot); },
     secondaryDown(slot) {
       const t = TYPES[B.selected];
+      if (t.fine) { removeFine(); return; }
       if (!t.raft && aim.hit) {
         const b = aim.hit;
         if (b.t.shape === 'door' && playerInside(b) && !b.open) return;
@@ -721,6 +980,59 @@
     secondaryUp(slot) { if (hammer) hammer.secondaryUp(slot); },
     hint() { return wrap.hintText; },
   };
+
+  function updateFine(t, dt) {
+    const I = G.input;
+    if (I.pressed('KeyR') && t.rot) { B.fineRot = (B.fineRot + 1) & 1; G.sfx('ui_click', { volume: 0.3 }); }
+    if (I.pressed('KeyG')) {
+      B.fineStep = FINE_STEPS[(FINE_STEPS.indexOf(B.fineStep) + 1) % FINE_STEPS.length];
+      G.sfx('ui_click', { volume: 0.3 });
+      G.notify('Mřížka pro jemné díly: ' + Math.round(B.fineStep * 100) + ' cm', 'info');
+    }
+    if (hammer && hammer.cooldown > 0) hammer.cooldown -= dt;
+    if (hammer && hammer.animate) hammer.animate(dt);
+    computeFineAim(t);
+    const afford = G.inventory.hasAll(t.cost);
+    showFineGhost(t, afford);
+    const L = I.touchMode ? '●' : 'Levé tl.';
+    const R = I.touchMode ? '◐' : 'Pravé tl.';
+    let h;
+    if (fine.ok) h = afford ? L + ': Postavit ' + t.name.toLowerCase() + ' (' + costText(t.cost) + ')'
+      : t.name + ' – chybí materiál (' + costText(t.cost) + ')';
+    else h = fine.reason;
+    if (fine.hitKind === 'piece' || fine.hitKind === 'block') h += ' · ' + R + ': Rozbít';
+    if (!I.touchMode) h += (t.rot ? ' · R: otočit' : '') + ' · G: mřížka ' + Math.round(B.fineStep * 100) + ' cm';
+    else if (t.rot) h += ' · ⟳ otočit';
+    wrap.hintText = h;
+    G.hud.setToolHint(h);
+  }
+  function placeFine(t) {
+    if (!fine.ok) { G.sfx('error', { volume: 0.4 }); return; }
+    if (!G.inventory.hasAll(t.cost)) { G.sfx('error'); G.notify('Chybí ti: ' + costText(t.cost), 'warn'); return; }
+    const p = addPiece(t.id, fine.x0, fine.y0, fine.z0, fine.rot);
+    if (!p) { G.sfx('error'); return; }
+    for (const id in t.cost) G.inventory.remove(id, t.cost[id]);
+    wrap.swing();
+    _p.set((p.x0 + p.x1) / 2, deckBase() + (p.y0 + p.y1) / 2, (p.z0 + p.z1) / 2);
+    G.sfx('build', { position: _p, volume: 0.6 });
+    if (G.fx && G.fx.debris) G.fx.debris(_p, 0xc49a66, 3);
+    G.events.emit('build:block', { type: t.id });
+  }
+  function removeFine() {
+    const h = fine.hit;
+    if (fine.hitKind === 'piece' && h) {
+      _p.set((h.x0 + h.x1) / 2, deckBase() + (h.y0 + h.y1) / 2, (h.z0 + h.z1) / 2);
+      removePiece(h, true);
+    } else if (fine.hitKind === 'block' && h) {
+      if (h.t.shape === 'door' && playerInside(h) && !h.open) return;
+      _p.set(h.x + 0.5, deckBase() + h.y + 0.5, h.z + 0.5);
+      removeBlock(h, true);
+    } else return;
+    fine.hit = null; fine.hitKind = '';
+    wrap.swing();
+    G.sfx('break_wood', { position: _p, volume: 0.5 });
+    if (G.fx && G.fx.debris) G.fx.debris(_p, 0x9b6b3d, 4);
+  }
 
   // ---------------------------------------------------------------------------
   // Module
@@ -741,6 +1053,12 @@
           removeBlock(b, false);
         }
       }
+    }
+    const x0 = e.i * T, z0 = e.j * T;
+    for (const p of Array.from(B.pieces)) {
+      if (p.y0 > 0.01) continue;
+      const mx = (p.x0 + p.x1) / 2, mz = (p.z0 + p.z1) / 2;
+      if (mx >= x0 && mx < x0 + T && mz >= z0 && mz < z0 + T) removePiece(p, false);
     }
   }
 
@@ -786,11 +1104,15 @@
       clearAll();
       B.selected = 0;
       B.rotOffset = 0;
+      B.fineRot = 0;
+      B.fineStep = FINE_STEPS[0];
     },
     save() {
       const out = [];
       for (const b of B.blocks) out.push([b.t.id, b.x, b.y, b.z, b.rot, b.open ? 1 : 0]);
-      return { blocks: out, selected: B.selected };
+      const fp = [];
+      for (const p of B.pieces) fp.push([p.t.id, p.x0, p.y0, p.z0, p.rot]);
+      return { blocks: out, pieces: fp, selected: B.selected, fineStep: B.fineStep };
     },
     load(d) {
       if (!d || !Array.isArray(d.blocks)) return;
@@ -798,6 +1120,13 @@
         if (!Array.isArray(e)) continue;
         addBlock(String(e[0]), e[1] | 0, e[2] | 0, e[3] | 0, e[4] | 0, !!e[5]);
       }
+      if (Array.isArray(d.pieces)) {
+        for (const e of d.pieces) {
+          if (!Array.isArray(e) || Math.abs(Number(e[1])) > 80 || Math.abs(Number(e[3])) > 80) continue;
+          addPiece(String(e[0]), e[1], e[2], e[3], e[4] | 0);
+        }
+      }
+      if (FINE_STEPS.includes(d.fineStep)) B.fineStep = d.fineStep;
       if (typeof d.selected === 'number' && TYPES[d.selected]) B.selected = d.selected;
     },
     update(dt) {

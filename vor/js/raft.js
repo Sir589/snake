@@ -948,10 +948,23 @@
     return !(separated(A, B, dx, dz, A.ax, A.az) || separated(A, B, dx, dz, A.bx, A.bz) ||
       separated(A, B, dx, dz, B.ax, B.az) || separated(A, B, dx, dz, B.bx, B.bz));
   }
+  const _near = [];
   function hitsBlocks(o) {
     const Bd = G.build;
-    if (!Bd || !Bd.blocks || !Bd.blocks.size || typeof Bd.blockAt !== 'function') return false;
+    if (!Bd || typeof Bd.blockAt !== 'function') return false;
     const ex = o.hx * Math.abs(o.ax) + o.hz * Math.abs(o.bx), ez = o.hx * Math.abs(o.az) + o.hz * Math.abs(o.bz);
+    // fine pieces (planks, beams, posts…)
+    if (Bd.pieces && Bd.pieces.size && typeof Bd.piecesNear === 'function') {
+      Bd.piecesNear(o.x - ex, o.x + ex, o.z - ez, o.z + ez, _near);
+      for (let k = 0; k < _near.length; k++) {
+        const p = _near[k];
+        if (p.y1 <= o.y0 + 0.01 || p.y0 >= o.y1 - 0.01) continue;
+        _oBox.x = (p.x0 + p.x1) / 2; _oBox.z = (p.z0 + p.z1) / 2;
+        _oBox.hx = (p.x1 - p.x0) / 2; _oBox.hz = (p.z1 - p.z0) / 2;
+        if (obbOverlap(o, _oBox)) return true;
+      }
+    }
+    if (!Bd.blocks || !Bd.blocks.size) return false;
     const x0 = Math.floor(o.x - ex), x1 = Math.floor(o.x + ex), z0 = Math.floor(o.z - ez), z1 = Math.floor(o.z + ez);
     const y0 = Math.max(0, Math.floor(o.y0)), y1 = Math.floor(o.y1 - 0.01);
     for (let x = x0; x <= x1; x++) {
@@ -983,7 +996,7 @@
     let best = -Infinity;
     if (maxY >= 0 && grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE)))) best = 0;
     const Bd = G.build;
-    if (Bd && Bd.blocks && Bd.blocks.size && typeof Bd.heightAt === 'function') {
+    if (Bd && ((Bd.blocks && Bd.blocks.size) || (Bd.pieces && Bd.pieces.size)) && typeof Bd.heightAt === 'function') {
       const base = raft.deckY();
       const h = Bd.heightAt(x, z, base + maxY);
       if (h !== null && h - base > best) best = h - base;

@@ -157,7 +157,7 @@
   }
   // Built blocks (build.js) between the step height and the top of the head.
   function blockWall(x, z, limitY, headY) {
-    return !!(G.build && G.build.blocks.size && G.build.blocked(x, z, limitY, headY, 0.3));
+    return !!(G.build && (G.build.blocks.size || (G.build.pieces && G.build.pieces.size)) && G.build.blocked(x, z, limitY, headY, 0.3));
   }
 
   // Tool handler calls never break the controller; each failure is reported once.

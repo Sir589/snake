@@ -11,9 +11,13 @@ export default async (page, h) => {
   const L = lib(page, h, 'death');
   const { ok, until, shot, note, sceneStats } = L;
 
+  // Floating debris comes and goes on its own timer (the opening "easy first catch" bundle adds a
+  // badge sprite a moment into a new game), so it is cleared before every measurement.
   const settle = async () => {
     await L.frames(20);
     await L.gameWait(0.6);
+    await h.eval(() => G.debris.clear());
+    await L.frames(2);
   };
   await settle();
   const fresh = await sceneStats();

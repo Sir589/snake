@@ -111,6 +111,7 @@
     ['Inventář a výroba', K('Tab') + ' nebo ' + K('I') + ', výroba ' + K('C'), '🎒'],
     ['Otočit stavbu (vybavení po 15°)', K('R') + ' nebo pravé tlačítko myši, zpět ' + K('Shift') + '+' + K('R'), '◐ nebo ↻'],
     ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
+    ['Jemné díly (prkénko, trám, sloup, půlblok)', K('G') + ' mřížka 25 / 50 cm, ' + K('R') + ' otočit', 'vyber díl v nabídce kladiva'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
     ['Nápověda', K('H'), '—'],
     ['Ztlumit zvuk', K('M'), '—'],

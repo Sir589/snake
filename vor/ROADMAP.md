@@ -7,7 +7,9 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    *Hotovo:* vybavení stojí kdekoli na palubě i na blocích, otáčí se po 15° (R / Shift+R, držením plynule),
    nesmí do bloků ani do jiného vybavení, samo se přisune ke zdi; když zmizí podlaha, spadne níž nebo do moře.
    Test: `tools/scenarios/placement.mjs`.
-2. **Jemnější stavění**: vedle 1m bloků i prkna, trámy a sloupy s polovičním/čtvrtinovým krokem mřížky.
+2. ✅ **HOTOVO – Jemnější stavění**: vedle 1m bloků i prkna, trámy a sloupy s polovičním/čtvrtinovým krokem mřížky.
+   *Hotovo:* v nabídce kladiva jsou Prkénko, Trám, Sloup a Půlblok; mřížka 25 cm, klávesa G přepne na 50 cm, R otáčí.
+   Dá se po nich chodit, stavět na ně vybavení, ukládají se. Test: `tools/scenarios/fine.mjs`.
 3. **Lepší plachta** přes celý vor (větší rychlost), **stožár, dalekohled** (přiblížení kamery), **postel**
    (přespat noc), **podpalubí** (bloky pod úrovní paluby).
 4. **Vylepšení podvozku voru**: úrovně dílů (dřevo → zpevněné → kovové), vor větší než 24×24.
