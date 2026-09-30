@@ -398,7 +398,7 @@
       vH = h;
       vGrad = vec2(dx, dz);
       // keep the water below the deck under the raft (no waves poking through the planks)
-      float occ = texture2D(uRaftMap, (p.xz * 0.5 + 16.0) / 32.0).r;
+      float occ = texture2D(uRaftMap, (p.xz * 0.5 + 32.0) / 64.0).r;
       h = mix(h, min(h, uDeckY - 0.2), smoothstep(0.3, 0.62, occ));
       p.y = h;
       vWorld = p;
@@ -447,7 +447,7 @@
 
     void main() {
       // no sea surface inside a below-deck hold (green channel of the raft map, sampled at the tile centre)
-      if (texture2D(uRaftMap, (floor(vWorld.xz * 0.5) + 16.5) / 32.0).g > 0.5) discard;
+      if (texture2D(uRaftMap, (floor(vWorld.xz * 0.5) + 32.5) / 64.0).g > 0.5) discard;
       vec3 toCam = cameraPosition - vWorld;
       float dist = length(toCam);
       vec3 V = toCam / dist;
@@ -647,9 +647,11 @@
   let sky = null, skyMat = null, stars = null, starMat = null, clouds = null, cloudMat = null;
   let ocean = null, oceanMat = null, oceanQuality = null, noiseTex = null, raftTex = null;
   let rain = null, rainMat = null, bolts = [], boltMesh = null;
-  const occData = new Uint8Array(32 * 32 * 4);
-  const occNext = new Uint8Array(32 * 32);
-  const holdNext = new Uint8Array(32 * 32);
+  // raft map: one texel per raft tile, tiles i, j ∈ [-32, 31] (raft.js keeps the raft inside)
+  const RMAP = 64, RHALF = 32;
+  const occData = new Uint8Array(RMAP * RMAP * 4);
+  const occNext = new Uint8Array(RMAP * RMAP);
+  const holdNext = new Uint8Array(RMAP * RMAP);
 
   const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _cam = new THREE.Vector3();
   const _c = new THREE.Color(), _c2 = new THREE.Color();
@@ -818,7 +820,7 @@
     const built = buildOceanGeometry(quality);
     if (!oceanMat) {
       noiseTex = makeNoiseTexture();
-      raftTex = new THREE.DataTexture(occData, 32, 32, THREE.RGBAFormat);
+      raftTex = new THREE.DataTexture(occData, RMAP, RMAP, THREE.RGBAFormat);
       raftTex.magFilter = THREE.LinearFilter;
       raftTex.minFilter = THREE.LinearFilter;
       raftTex.wrapS = raftTex.wrapT = THREE.ClampToEdgeWrapping;
@@ -1434,8 +1436,17 @@
   });
 
   // =============================================================================================
-  // Raft occupancy map (32×32 tiles around the origin) for the under-raft clamp and foam fringe.
+  // Raft occupancy map (64×64 tiles around the origin) for the under-raft clamp and foam fringe.
   // =============================================================================================
+  const _shadowC = new THREE.Vector3();
+  function shadowCenter(out) {
+    out.set(0, 0, 0);
+    const R = G.raft, P = G.player;
+    if (!R || typeof R.radius !== 'function' || R.radius() < 16 || !P || !P.position || G.state !== 'playing') return out;
+    // snap to 2 m so the shadow texels do not crawl while walking
+    return out.set(Math.round(P.position.x / 2) * 2, 0, Math.round(P.position.z / 2) * 2);
+  }
+  G.debug.raftMap = (i, j) => { const x = i + RHALF, y = j + RHALF; return x < 0 || y < 0 || x >= RMAP || y >= RMAP ? -1 : occData[(y * RMAP + x) * 4]; };
   function refreshRaftMap() {
     if (!raftTex) return;
     occNext.fill(0);
@@ -1445,12 +1456,12 @@
     if (tiles && typeof tiles.forEach === 'function') {
       tiles.forEach((t) => {
         if (!t) return;
-        const i = (t.i | 0) + 16, j = (t.j | 0) + 16;
-        if (i >= 0 && i < 32 && j >= 0 && j < 32) { occNext[j * 32 + i] = 255; if (t.hold) holdNext[j * 32 + i] = 255; }
+        const i = (t.i | 0) + RHALF, j = (t.j | 0) + RHALF;
+        if (i >= 0 && i < RMAP && j >= 0 && j < RMAP) { occNext[j * RMAP + i] = 255; if (t.hold) holdNext[j * RMAP + i] = 255; }
       });
     }
     let changed = false;
-    for (let k = 0; k < 1024; k++) {
+    for (let k = 0; k < RMAP * RMAP; k++) {
       if (occData[k * 4] !== occNext[k]) { occData[k * 4] = occNext[k]; changed = true; }
       if (occData[k * 4 + 1] !== holdNext[k]) { occData[k * 4 + 1] = holdNext[k]; changed = true; }
     }
@@ -1562,6 +1573,10 @@
     }
     if (lightDir.y < 0.05) { lightDir.y = 0.05; lightDir.normalize(); }
     sun.position.copy(lightDir).multiplyScalar(80);
+    // big rafts: the shadow box (±18 m) follows the player instead of staying on the raft centre
+    shadowCenter(_shadowC);
+    sun.position.add(_shadowC);
+    sun.target.position.copy(_shadowC);
 
     // lightning flash
     const fl = flash;

@@ -148,6 +148,12 @@ export default async (page, h) => {
         hd.primaryDown(slot); hd.primaryUp(slot); pump(hd, 0.6);
         eq(t.hp, 150, 'repaired'); ok(last('build:repair'), 'build:repair');
         hd.update(0.016, slot);
+        eq(hd.aim.kind, 'metal', 'metal aim on a reinforced tile');
+        ok(/Okovat základ/.test(G.hud.toolHint), 'metal hint: ' + G.hud.toolHint);
+        I.add('kov', 4, 'debug');
+        hd.primaryDown(slot); hd.primaryUp(slot); pump(hd, 0.6);
+        eq(t.level, 2, 'plated with metal'); eq(t.maxHp, 250, 'metal maxHp');
+        hd.update(0.016, slot);
         eq(hd.aim.kind, 'full', 'full aim');
         hd.onUnequip();
         eq(G.hud.toolHint, '', 'hint cleared on unequip');
@@ -180,7 +186,7 @@ export default async (page, h) => {
         ok(t.mesh.geometry !== g0, 'damaged visual state');
         const d = last('tile:damaged'); ok(d && d.tile === t && d.amount === 30 && d.source === 'shark', 'tile:damaged payload');
         eq(R.damageTile(r, 50, 'shark'), 0, 'reinforced ignores shark');
-        eq(r.hp, 150, 'reinforced hp intact');
+        eq(r.hp, r.maxHp, 'reinforced hp intact');
         R.damageTile(t, 50, 'storm');
         eq(t.hp, 20, 'hp 20');
         const n = R.count();
@@ -517,10 +523,10 @@ export default async (page, h) => {
 
       step('span limit & debug hooks', () => {
         mod.reset();
-        for (let i = 1; i <= 22; i++) R.addTile(i, 0);
-        eq(R.canBuildAt(23, 0), 'size', 'span limit'); eq(R.build(23, 0), false, 'no build past limit');
+        for (let i = 1; i <= 30; i++) R.addTile(i, 0);
+        eq(R.canBuildAt(31, 0), 'size', 'span limit'); eq(R.build(31, 0), false, 'no build past limit');
         G.debug.buildRing();
-        for (const t of R.tiles.values()) ok(t.i >= -1 && t.i <= 22, 'ring respects span');
+        for (const t of R.tiles.values()) ok(t.i >= -1 && t.i <= 30, 'ring respects span');
         mod.reset();
         eq(G.debug.buildRing(), 8, 'buildRing');
         const n = R.count();

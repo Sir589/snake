@@ -11,11 +11,15 @@
   // ---------------------------------------------------------------------------
   // Tunables
   // ---------------------------------------------------------------------------
-  const MAX_SPAN = 24;                          // max raft size in tiles along each axis
-  const HP_NORMAL = 100, HP_REINFORCED = 150;
+  const MAX_SPAN = 32;                          // max raft size in tiles along each axis
+  const MAX_CELL = 32;                          // tiles stay within i, j ∈ [-32, 31] (world.js raft map)
+  // Tile levels: 0 wood, 1 reinforced (shark-proof), 2 metal (also shrugs off most cannon / storm damage)
+  const HP_NORMAL = 100, HP_REINFORCED = 150, HP_METAL = 250;
+  const HP_LEVEL = [HP_NORMAL, HP_REINFORCED, HP_METAL];
   const COST = {
     foundation: { prkno: 2, plast: 2 },
     reinforce: { prkno: 2, kov: 1 },
+    metal: { kov: 4, prkno: 1 },
     repair: { prkno: 1 },
   };
   const SPEED_DRIFT = 0.35, SPEED_SAIL = 2.2;
@@ -468,8 +472,9 @@
   const MISS = [{ a: 1, b: 4, br: 2 }, { a: 3, b: 0, br: 2 }, { a: 2, b: 4, br: 1 }];
   const PLANK_Z = [-0.8, -0.4, 0, 0.4, 0.8];
 
-  function tileGeometry(variant, reinforced, state) {
-    const key = variant * 8 + (reinforced ? 4 : 0) + state;
+  function tileGeometry(variant, level, state) {
+    const key = variant * 12 + level * 4 + state;
+    const reinforced = level >= 1, metal = level >= 2;
     if (tileGeoCache[key]) return tileGeoCache[key];
     const b = new Builder();
     const rnd = seeded(97 + variant * 31);
@@ -543,6 +548,17 @@
           b.box(0.12, 0.2, 0.014, { x: sx * 0.9, y: 0.25, z: sz * 1.004, c: COL.plate });
           b.box(0.014, 0.2, 0.12, { x: sx * 1.004, y: 0.25, z: sz * 0.9, c: COL.plate });
         }
+      }
+    }
+    if (metal) {
+      // riveted steel straps across the boards and a steel rim along the edges
+      for (const x of [-0.62, 0, 0.62]) {
+        b.box(0.16, 0.014, 1.96, { x, y: 0.3585, c: COL.metal, shade });
+        for (const z of [-0.8, -0.4, 0, 0.4, 0.8]) b.quad(0.028, 0.028, { x: x + 0.045, y: 0.3665, z, c: COL.rivet });
+      }
+      for (const sz of [-1, 1]) {
+        b.box(2.02, 0.04, 0.05, { y: 0.35, z: sz * 0.995, c: COL.metal, shade });
+        b.box(0.05, 0.04, 2.02, { x: sz * 0.995, y: 0.35, c: COL.metal, shade });
       }
     }
     tileGeoCache[key] = b.build();
@@ -620,11 +636,12 @@
 
   function refreshTile(t) {
     const st = tileState(t);
-    const code = st + (t.reinforced ? 4 : 0);
+    const lvl = t.level || 0;
+    const code = st + lvl * 4;
     if (code !== t.dmg) {
       t.dmg = code;
       bucketRemove(t);
-      bucketInsert(t, t.variant * 8 + code, tileGeometry(t.variant, t.reinforced, st));
+      bucketInsert(t, t.variant * 12 + code, tileGeometry(t.variant, lvl, st));
     }
     return st;
   }
@@ -636,6 +653,7 @@
     return grid.has(nkey(i + 1, j)) || grid.has(nkey(i - 1, j)) || grid.has(nkey(i, j + 1)) || grid.has(nkey(i, j - 1));
   }
   function spanOk(i, j) {
+    if (i < -MAX_CELL || i >= MAX_CELL || j < -MAX_CELL || j >= MAX_CELL) return false;
     if (!tiles.size) return true;
     return Math.max(cache.maxI, i) - Math.min(cache.minI, i) + 1 <= MAX_SPAN &&
       Math.max(cache.maxJ, j) - Math.min(cache.minJ, j) + 1 <= MAX_SPAN;
@@ -684,7 +702,7 @@
     assets();
     const h = hash2(i, j), v = h % 10;
     const t = {
-      i, j, hp: HP_NORMAL, maxHp: HP_NORMAL, reinforced: false, mesh: null, structure: null,
+      i, j, hp: HP_NORMAL, maxHp: HP_NORMAL, reinforced: false, level: 0, mesh: null, structure: null,
       variant: v < 6 ? 0 : v < 8 ? 1 : 2, flip: ((h >>> 8) & 1) === 1,
       dmg: -1, pop: 1, shake: 0, fxAt: -1e9, animating: false, bucket: null, slot: -1,
     };
@@ -757,7 +775,11 @@
     if (!isLive(t)) return 0;
     amount = Number(amount) || 0;
     if (!(amount > 0)) return 0;
-    if (t.reinforced) {
+    if (t.level >= 2) {
+      if (source === 'shark') return 0;
+      if (source === 'cannon') amount *= 0.35;
+      if (source === 'storm') amount *= 0.5;
+    } else if (t.reinforced) {
       if (source === 'shark') return 0;
       if (source === 'cannon') amount *= 0.5;
     }
@@ -832,11 +854,31 @@
     G.events.emit('build:repair', { i: t.i, j: t.j });
     return true;
   }
+  function setLevel(t, level) {
+    t.level = G.clamp(level | 0, 0, 2);
+    t.reinforced = t.level >= 1;
+    t.maxHp = HP_LEVEL[t.level];
+  }
+  // Metal plating on a reinforced tile (level 2).
+  function plate(t) {
+    if (!isLive(t) || !t.reinforced || t.level >= 2) return false;
+    if (!pay(COST.metal)) return false;
+    setLevel(t, 2);
+    t.hp = HP_METAL;
+    refreshTile(t);
+    t.pop = 0.55;
+    t.animating = true;
+    const c = tileCenter(t, new THREE.Vector3());
+    snd('hammer', c);
+    snd('build', c, 0.8);
+    fxCall('sparkle', c, 0xdfe6ec);
+    G.events.emit('build:metal', { i: t.i, j: t.j });
+    return true;
+  }
   function reinforce(t) {
     if (!isLive(t) || t.reinforced) return false;
     if (!pay(COST.reinforce)) return false;
-    t.reinforced = true;
-    t.maxHp = HP_REINFORCED;
+    setLevel(t, 1);
     t.hp = HP_REINFORCED;
     refreshTile(t);
     t.pop = 0.55;
@@ -2711,6 +2753,7 @@
       a.tile = tile; a.i = ci; a.j = cj;
       if (tile.hp < tile.maxHp) { a.kind = 'repair'; a.cost = COST.repair; }
       else if (!tile.reinforced) { a.kind = 'reinforce'; a.cost = COST.reinforce; }
+      else if ((tile.level || 0) < 2) { a.kind = 'metal'; a.cost = COST.metal; }
       else a.kind = 'full';
       return a;
     }
@@ -2750,7 +2793,11 @@
         h = afford ? L + ': Zpevnit základ (' + costText(COST.reinforce) + ')' + (touch ? '' : ' – žralok ho neukousne')
           : 'Zpevnit základ (' + costText(COST.reinforce) + ') · Chybí: ' + miss;
         break;
-      case 'full': h = 'Tenhle základ je zpevněný a v pořádku.'; break;
+      case 'metal':
+        h = afford ? L + ': Okovat základ (' + costText(COST.metal) + ')' + (touch ? '' : ' – vydrží i dělo a bouři')
+          : 'Okovat základ (' + costText(COST.metal) + ') · Chybí: ' + miss;
+        break;
+      case 'full': h = 'Tenhle základ je okovaný a v pořádku. Silnější už nebude.'; break;
       case 'size': h = 'Vor už je největší, jaký může být (' + MAX_SPAN + ' × ' + MAX_SPAN + ').'; break;
       case 'far': h = 'Přijď blíž k okraji voru.'; break;
       default: h = 'Namiř na vodu u okraje voru a postav nový základ.';
@@ -2806,12 +2853,12 @@
         ghostTile.position.set((a.i + 0.5) * TILE, 0, (a.j + 0.5) * TILE);
         ghostTile.material = hammer.afford ? M.ghostOk : M.ghostBad;
       }
-      const show = bld || a.kind === 'repair' || a.kind === 'reinforce' || a.kind === 'full';
+      const show = bld || a.kind === 'repair' || a.kind === 'reinforce' || a.kind === 'metal' || a.kind === 'full';
       outline.visible = show;
       if (show) {
         outline.position.set((a.i + 0.5) * TILE, 0.12, (a.j + 0.5) * TILE);
         const col = a.kind === 'full' ? 0xdfe8e0 : !hammer.afford ? 0xff5a4a
-          : a.kind === 'repair' ? 0xffd35a : a.kind === 'reinforce' ? 0x8fd8ff : 0x6dff8e;
+          : a.kind === 'repair' ? 0xffd35a : a.kind === 'reinforce' ? 0x8fd8ff : a.kind === 'metal' ? 0xb8c4cf : 0x6dff8e;
         outline.material.color.setHex(col);
       }
       hammer.shown = show;
@@ -2834,7 +2881,7 @@
     tryAct(click) {
       if (hammer.cooldown > 0 || hammer.swingT >= 0) return;
       const a = hammer.aim;
-      const actionable = a.kind === 'build' || a.kind === 'repair' || a.kind === 'reinforce';
+      const actionable = a.kind === 'build' || a.kind === 'repair' || a.kind === 'reinforce' || a.kind === 'metal';
       if (!actionable || !hammer.afford) {
         if (click) {
           hammer.swingT = 0; hammer.pending = null; hammer.cooldown = SWING_TIME;
@@ -2851,6 +2898,7 @@
       if (p.kind === 'build') ok = build(p.i, p.j);
       else if (p.kind === 'repair') ok = repair(p.tile);
       else if (p.kind === 'reinforce') ok = reinforce(p.tile);
+      else if (p.kind === 'metal') ok = plate(p.tile);
       if (ok) G.inventory.damageSelected(1);
       else G.sfx('error');
     },
@@ -2949,7 +2997,7 @@
     if (typeof def.data === 'function') { try { data = def.data() || {}; } catch (err) { data = {}; } }
     // previews get a detached dummy tile; registries are sandboxed so a create() with side effects
     // cannot leave phantom interactables / combat targets / ground behind
-    const tile = { i: 0, j: 0, hp: HP_NORMAL, maxHp: HP_NORMAL, reinforced: false, mesh: null, structure: null, preview: true };
+    const tile = { i: 0, j: 0, hp: HP_NORMAL, maxHp: HP_NORMAL, reinforced: false, level: 0, mesh: null, structure: null, preview: true };
     const s = { type, tile, object: null, data, rotation: 0, ghost: true, mini: !!mini };
     const regs = [G.interaction, G.combat, G.ground], adds = regs.map((r) => r.add);
     for (const r of regs) r.add = (x) => x;
@@ -3258,6 +3306,8 @@
     build,
     repair,
     reinforce,
+    plate,
+    HP_LEVEL,
     destroyTile,
     speed() { return speed; },
   });
@@ -3454,7 +3504,7 @@
 
     save() {
       const outTiles = [];
-      for (const t of tiles.values()) outTiles.push({ i: t.i, j: t.j, hp: Math.round(t.hp * 10) / 10, reinforced: t.reinforced ? 1 : 0, hold: t.hold ? 1 : 0 });
+      for (const t of tiles.values()) outTiles.push({ i: t.i, j: t.j, hp: Math.round(t.hp * 10) / 10, reinforced: t.reinforced ? 1 : 0, level: t.level || (t.reinforced ? 1 : 0), hold: t.hold ? 1 : 0 });
       const outS = [];
       for (const s of structures) {
         const def = structureDefs[s.type];
@@ -3477,12 +3527,11 @@
             if (!o) continue;
             const i = Math.floor(Number(o.i)), j = Math.floor(Number(o.j));
             if (!Number.isFinite(i) || !Number.isFinite(j) || grid.has(nkey(i, j))) continue;
-            if (Math.abs(i) > MAX_SPAN || Math.abs(j) > MAX_SPAN) continue;   // corrupt / hostile save
+            if (i < -MAX_CELL || i >= MAX_CELL || j < -MAX_CELL || j >= MAX_CELL) continue;   // corrupt / hostile save
             const t = addTile(i, j);
             if (!t) continue;
-            const r = !!(o.reinforced || o.r);
-            t.reinforced = r;
-            t.maxHp = r ? HP_REINFORCED : HP_NORMAL;
+            const lv = Number.isInteger(o.level) ? o.level : (o.reinforced || o.r) ? 1 : 0;
+            setLevel(t, lv);
             const hp = Number(o.hp);
             t.hp = Number.isFinite(hp) ? G.clamp(hp, 1, t.maxHp) : t.maxHp;
             if (o.hold) { t.hold = true; holdsDirty = true; }

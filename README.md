@@ -11,6 +11,7 @@ rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ost
   schody, okna, dveře, střecha, kámen, zábradlí, lucerny a barevné bloky. Levé tlačítko staví, pravé bourá (materiál se vrátí),
   R otáčí. Stavět jde do výšky až 16 bloků, takže i vícepatrové domy.
 - Jemné stavění: prkénka, trámy, sloupy a půlbloky na mřížce 25 cm (G přepne na 50 cm), R otáčí.
+- Díly voru mají tři úrovně: dřevo → zpevněný → okovaný (kladivem); vor může mít až 32 × 32 dílů.
 - Velká plachta přes celý vor (rychlejší plavba), stožár s košem na rozhlížení, dalekohled (podrž levé tlačítko),
   postel (v noci se vyspíš do rána) a podpalubí pod vorem (kladivo → Podpalubí, vstup poklopem).
 - Vybavení (gril, truhla, síť, vlajka…) jde položit kamkoli na palubu i na bloky, otáčí se po 15° (R, zpět Shift+R).

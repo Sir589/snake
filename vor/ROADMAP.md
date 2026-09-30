@@ -17,7 +17,9 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    Podpalubí: kladivem → Podpalubí pod díl voru, vstup Poklopem; uvnitř sucho, stěny, strop, lucerna, dá se tam
    postavit vybavení (truhly…). Bloky se pod palubu zatím stavět nedají – místo nich je celé podpalubí pod dílem.
    Testy: `tools/scenarios/lookout.mjs`, `tools/scenarios/hold.mjs`.
-4. **Vylepšení podvozku voru**: úrovně dílů (dřevo → zpevněné → kovové), vor větší než 24×24.
+4. ✅ **HOTOVO – Vylepšení podvozku voru**: úrovně dílů (dřevo → zpevněné → kovové), vor větší než 24×24.
+   *Hotovo:* kladivem na zpevněný díl → „Okovat základ“ (4× kov, 1× prkno): 250 HP, žralok ho neukousne, dělo bere
+   jen 35 %, bouře polovinu. Vor může mít až 32 × 32 dílů (voda pod palubou i stíny to zvládají). Test: `tools/scenarios/tiers.mjs`.
 5. **Bouře různé síly**: silná bouře houpe celým vorem, nevylepšené díly praskají, hráč může vypadnout.
 6. **Potápění**: plavání pod hladinu, pěkné dno (korály, ryby, poklady), dech.
 7. **Ostrovy**: každý jiný – velikost, tvar, druhy stromů, skály, jeskyně.

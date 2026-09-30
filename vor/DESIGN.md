@@ -537,6 +537,10 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Tile levels & big rafts (ROADMAP 4).** `tile.level` 0 wood (100 hp), 1 reinforced (150, `tile.reinforced` stays true
+  from level 1), 2 metal (250; no shark damage, cannon ×0.35, storm ×0.5). Hammer aim kinds add `metal`
+  (`G.raft.plate(tile)`, cost `COST.metal`). `MAX_SPAN` 32 and tiles stay within i, j ∈ [-32, 31]; world.js keeps a
+  64 × 64 raft map (`G.debug.raftMap(i, j)`) and, on rafts wider than ~16 m, centres the sun shadow box on the player.
 - **Lookout & comfort (ROADMAP 3).** Items `plachta_velka` (structure `bigsail`: the sail model with a taller mast and
   a rig stretched to ~85 % of the raft size; `G.raft.sailPower` 1.6 → 3.5 m/s), `stozar` (`mast`: 5 m crow's nest, ground
   provider kind `nest`, E climbs up / down), `postel` (`bed`: at night E skips to morning via `G.world.skipTo(0.27)`,
