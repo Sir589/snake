@@ -227,6 +227,28 @@
     else if (t === 'cannon') complete(byId.kanon);
   }
 
+  // A short story beat and an easy first catch right in front of the raft, so the first
+  // minute already feels like an adventure (and the first hook throw is a sure hit).
+  function openingScene() {
+    setTimeout(() => {
+      if (G.state !== 'playing') return;
+      if (G.ui && G.ui.banner) G.ui.banner('Tvoje loď se potopila… zůstal ti jen vor a hák. Přežij!', 'warn', 5);
+    }, 600);
+    const W = G.world && G.world.windDir, D = G.debris;
+    if (!W || !D || !D.spawn) return;
+    const side = new THREE.Vector3(-W.z, 0, W.x);
+    const drop = (type, along, lat) => {
+      const p = new THREE.Vector3().copy(W).multiplyScalar(along).addScaledVector(side, lat);
+      try { D.spawn(type, p); } catch (err) { /* debris module busy */ }
+    };
+    drop('sud', 9, 1.5);
+    drop('prkno', 7, -2);
+    drop('prkno', 11, 3);
+    drop('plast', 8, 4);
+    drop('prkno', 13, -3.5);
+    drop('plast', 14, 0.5);
+  }
+
   G.register({
     name: 'goals',
     order: 80,
@@ -247,7 +269,10 @@
       on('pirates:sunk', () => complete(byId.lod));
       on('world:day', (e) => setCount('dny', ((e && e.day) || 1) - 1));
       on('input:touchmode', bump);
-      on('game:start', () => { checkT = 0.6; });
+      on('game:start', (e) => {
+        checkT = 0.6;
+        if (e && e.fresh) openingScene();
+      });
     },
 
     reset() {

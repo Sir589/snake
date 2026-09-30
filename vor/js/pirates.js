@@ -13,7 +13,7 @@
   // Tunables
   // ---------------------------------------------------------------------------
   // The first raid also waits for a spear (goal 'ostep' done or one in the inventory).
-  const FIRST_RAID = 900, RAID_MIN = 480, RAID_MAX = 720, CHECK_EVERY = 30, MIN_TILES = 8;
+  const FIRST_RAID = 480, RAID_MIN = 420, RAID_MAX = 600, CHECK_EVERY = 30, MIN_TILES = 6;
   const SPAWN_DIST = 180, CIRCLE_MIN = 35, CIRCLE_MAX = 45;
   const SPEED_APPROACH = 7, SPEED_CIRCLE = 3.4, SPEED_LEAVE = 6.5, TURN_RATE = 0.3;
   const FIRE_MIN = 6, FIRE_MAX = 8, MISS_CHANCE = 0.35;

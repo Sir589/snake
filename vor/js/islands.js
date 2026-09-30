@@ -16,7 +16,7 @@
   // ---------------------------------------------------------------------------------------------
   // Tuning
   // ---------------------------------------------------------------------------------------------
-  const FIRST_AT = 180;              // G.time of the first island
+  const FIRST_AT = 75;               // G.time of the first island (early, so the first minutes have a destination)
   const EVERY_MIN = 240, EVERY_MAX = 400;
   const SPAWN_DIST = 220;            // upstream spawn distance
   const REMOVE_DIST = 260;           // removed this far downstream
