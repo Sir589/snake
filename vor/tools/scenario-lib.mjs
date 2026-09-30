@@ -3,9 +3,11 @@
 //   import { lib } from '../scenario-lib.mjs';
 //   export default async (page, h) => { const L = lib(page, h, 'build'); ... };
 //
-// Headless SwiftShader renders slowly and unevenly (game time often runs at 0.3–0.6× real time
-// and single frames can stall for seconds), so everything here waits for conditions or for game
-// time, never for fixed real-time delays.
+// Headless SwiftShader renders slowly and unevenly (game time runs at 0.1–0.6× real time on a
+// loaded machine and single frames can stall for seconds), so everything here waits for
+// conditions or for game time, never for fixed real-time delays. Timeouts are budgets of
+// *simulated* time (G.clock, the sum of frame dt in every state), so a slow runner only makes a
+// scenario take longer instead of failing it.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -18,22 +20,37 @@ export function lib(page, h, tag) {
   const fail = (m) => { throw new Error('[' + tag + '] ' + m); };
   const ok = (c, m) => { if (!c) fail(m); note('ok  ' + m); };
 
-  // Polls fn (evaluated in the page) until it returns something truthy.
+  const clock = () => page.evaluate(() => (window.G && G.clock) || 0);
+
+  // Polls fn (evaluated in the page) until it returns something truthy. Gives up only once both
+  // `ms` of real time and `ms` of simulated time (G.clock) have passed (hard cap 30× + 30 s).
   const until = async (fn, arg, ms = 15000, what = 'condition') => {
-    const t0 = Date.now();
+    const t0 = Date.now(), c0 = await clock(), hard = ms * 30 + 30000;
     let v;
-    while (Date.now() - t0 < ms) {
+    for (;;) {
       v = await page.evaluate(fn, arg);
       if (v) return v;
+      const el = Date.now() - t0;
+      if (el >= ms && (el >= hard || ((await clock()) - c0) * 1000 >= ms)) break;
       await page.waitForTimeout(60);
     }
     fail('timed out waiting for ' + what);
   };
 
-  // Waits until `sec` seconds of game time (G.time) have passed (real-time cap: 8× + 20 s).
+  // Waits until `sec` seconds of simulated time (G.clock: advances in menus / pause too) passed.
+  const settle = async (sec) => {
+    const c0 = await clock(), cap = Date.now() + sec * 30000 + 30000;
+    while (Date.now() < cap) {
+      if ((await clock()) - c0 >= sec) return;
+      await page.waitForTimeout(40);
+    }
+    fail('the page did not render ' + sec + ' s of frames');
+  };
+
+  // Waits until `sec` seconds of game time (G.time) have passed (real-time cap: 30× + 30 s).
   const gameWait = async (sec) => {
     const t0 = await page.evaluate(() => G.time);
-    const cap = Date.now() + sec * 8000 + 20000;
+    const cap = Date.now() + sec * 30000 + 30000;
     while (Date.now() < cap) {
       if ((await page.evaluate(() => G.time)) - t0 >= sec) return;
       await page.waitForTimeout(50);
@@ -126,5 +143,5 @@ export function lib(page, h, tag) {
       listeners: Object.values(G.events._h).reduce((a, l) => a + l.length, 0) };
   });
 
-  return { note, fail, ok, until, gameWait, frames, shot, aimAt, selectItem, sceneStats, freeLook, log };
+  return { note, fail, ok, until, settle, gameWait, frames, shot, aimAt, selectItem, sceneStats, freeLook, log };
 }

@@ -1847,6 +1847,99 @@
   });
 
   // ---------------------------------------------------------------------------
+  // Flag (Vlajka) — a decoration bought with pirate gold; streams with the wind
+  // ---------------------------------------------------------------------------
+  const FLAG_STRIPS = 4, FLAG_W = 0.2, FLAG_H = 0.46, FLAG_TOP = 2.28;
+  function makeFlagTex() {
+    const W = 128, H = 80;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const x = cv.getContext('2d');
+    x.fillStyle = '#0f5e6e';
+    x.fillRect(0, 0, W, H);
+    x.fillStyle = '#e8643c';
+    x.fillRect(0, 0, W, 12); x.fillRect(0, H - 12, W, 12);
+    // a golden sun over a wave
+    x.fillStyle = '#e9b949';
+    x.beginPath(); x.arc(64, 38, 15, 0, TAU); x.fill();
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * TAU;
+      x.beginPath();
+      x.moveTo(64 + Math.cos(a - 0.2) * 18, 38 + Math.sin(a - 0.2) * 18);
+      x.lineTo(64 + Math.cos(a) * 25, 38 + Math.sin(a) * 25);
+      x.lineTo(64 + Math.cos(a + 0.2) * 18, 38 + Math.sin(a + 0.2) * 18);
+      x.fill();
+    }
+    x.strokeStyle = '#e9f1ea'; x.lineWidth = 4;
+    x.beginPath();
+    for (let px = 20; px <= 108; px += 2) x.lineTo(px, 56 + Math.sin(px * 0.14) * 4);
+    x.stroke();
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = maxAniso(4);
+    return tex;
+  }
+  function flagGeo() {
+    if (GEO.flag) return GEO.flag;
+    const w = new Builder(), m = new Builder();
+    w.cyl(0.035, 0.045, FLAG_TOP + 0.05, 7, { y: (FLAG_TOP + 0.05) / 2, c: COL.beam, reg: REG.wood });
+    m.cyl(0.15, 0.19, 0.1, 8, { y: 0.05, c: COL.dark });
+    m.sphere(0.055, 8, 6, { y: FLAG_TOP + 0.1, c: COL.brass });
+    w.rod(0.04, FLAG_TOP - 0.02, 0, 0.04, FLAG_TOP - FLAG_H - 0.2, 0, 0.012, 4, { c: COL.rope, reg: REG.plain });
+    const strips = [];
+    for (let k = 0; k < FLAG_STRIPS; k++) {
+      const g = new THREE.PlaneGeometry(FLAG_W, FLAG_H).translate(FLAG_W / 2, 0, 0);
+      const uv = g.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, (k + uv.getX(i)) / FLAG_STRIPS);
+      strips.push(g);
+    }
+    GEO.flag = { wood: w.build(), metal: m.build(), strips };
+    return GEO.flag;
+  }
+  function createFlag(s) {
+    const g = new THREE.Group(), geo = flagGeo();
+    if (!M.flag) M.flag = new THREE.MeshStandardMaterial({ map: makeFlagTex(), side: THREE.DoubleSide, flatShading: true, roughness: 0.9 });
+    g.add(mesh(geo.wood, M.atlas), mesh(geo.metal, M.metal));
+    const rig = new THREE.Group();
+    rig.position.set(0.04, FLAG_TOP - FLAG_H / 2 - 0.02, 0);
+    g.add(rig);
+    const parts = [];
+    let parent = rig;
+    for (let k = 0; k < FLAG_STRIPS; k++) {
+      const seg = new THREE.Group();
+      if (k) seg.position.x = FLAG_W;
+      seg.add(mesh(geo.strips[k], M.flag));
+      parent.add(seg);
+      parts.push(seg);
+      parent = seg;
+    }
+    s._v = { rig, parts, yaw: 0, t: Math.random() * 10 };
+    return g;
+  }
+  function flagFrame(s, dt) {
+    const v = s._v;
+    if (!v) return;
+    v.t += dt;
+    const w = G.world && G.world.windDir;
+    if (w) {
+      const want = Math.atan2(-w.z, w.x) - s.rotation * HALF_PI;
+      const diff = Math.atan2(Math.sin(want - v.yaw), Math.cos(want - v.yaw));
+      v.yaw += diff * (1 - Math.exp(-1.2 * dt));
+      v.rig.rotation.y = v.yaw;
+    }
+    const storm = (G.world && G.world.storm) || 0;
+    const amp = 0.22 + 0.25 * storm, speed = 4 + 5 * storm;
+    for (let k = 0; k < v.parts.length; k++) v.parts[k].rotation.y = Math.sin(v.t * speed - k * 1.3) * amp * (0.5 + k * 0.25);
+  }
+
+  registerStructure('flag', {
+    name: 'Vlajka', item: 'vlajka', ownShadows: true, size: 0.5, interactY: 1.2,
+    data: () => ({}),
+    create: createFlag,
+    frame: flagFrame,
+  });
+
+  // ---------------------------------------------------------------------------
   // Aiming helpers
   // ---------------------------------------------------------------------------
   function eyeRay() {
@@ -1925,6 +2018,7 @@
 
   function hammerHint(a, afford, miss) {
     const L = btnL();
+    const touch = !!(G.input && G.input.touchMode);     // phones: keep the line short above the buttons
     let h;
     switch (a.kind) {
       case 'build':
@@ -1933,12 +2027,12 @@
         break;
       case 'repair': {
         const pct = Math.round((a.tile.hp / a.tile.maxHp) * 100);
-        h = (afford ? L + ': Opravit' : 'Opravit') + ' základ (' + costText(COST.repair) + ') · stav ' + pct + ' %' +
+        h = (afford ? L + ': Opravit' : 'Opravit') + ' základ (' + costText(COST.repair) + ')' + (touch ? '' : ' · stav ' + pct + ' %') +
           (afford ? '' : ' · Chybí: ' + miss);
         break;
       }
       case 'reinforce':
-        h = afford ? L + ': Zpevnit základ (' + costText(COST.reinforce) + ') – žralok ho neukousne'
+        h = afford ? L + ': Zpevnit základ (' + costText(COST.reinforce) + ')' + (touch ? '' : ' – žralok ho neukousne')
           : 'Zpevnit základ (' + costText(COST.reinforce) + ') · Chybí: ' + miss;
         break;
       case 'full': h = 'Tenhle základ je zpevněný a v pořádku.'; break;
@@ -1948,7 +2042,7 @@
     }
     if (a.s) {
       const def = structureDefs[a.s.type];
-      h += ' · ' + btnR() + ' (drž): Rozebrat – ' + (def ? def.name : a.s.type);
+      h += ' · ' + btnR() + ' (drž): Rozebrat' + (touch ? '' : ' – ' + (def ? def.name : a.s.type));
     }
     return h;
   }
@@ -2565,6 +2659,7 @@
             if (!o) continue;
             const i = Math.floor(Number(o.i)), j = Math.floor(Number(o.j));
             if (!Number.isFinite(i) || !Number.isFinite(j) || grid.has(nkey(i, j))) continue;
+            if (Math.abs(i) > MAX_SPAN || Math.abs(j) > MAX_SPAN) continue;   // corrupt / hostile save
             const t = addTile(i, j);
             if (!t) continue;
             const r = !!(o.reinforced || o.r);

@@ -61,9 +61,16 @@ export default async (page, h) => {
   await until(() => G.state === 'menu', null, 8000, 'menu again');
 
   await page.click('#btn-new');
-  await h.wait(200);
-  ok(await h.eval(() => G.state === 'menu' && document.getElementById('btn-new').classList.contains('confirm')), 'Nová hra over a save asks first: ' + (await h.eval(() => document.getElementById('btn-new').textContent)));
-  await page.click('#btn-new');
+  await until(() => G.state === 'menu' && document.getElementById('btn-new').classList.contains('confirm'), null, 3000, 'Nová hra over a save asks first');
+  ok(await h.eval(() => G.state === 'menu' && G.save.exists()), 'the first click keeps the save: ' + (await h.eval(() => document.getElementById('btn-new').textContent)));
+  // The confirmation stays armed for 3.5 s of real time. On a slow runner the second click can
+  // land after that; it then simply re-arms the confirmation, so click again.
+  let started = false;
+  for (let k = 0; k < 3 && !started; k++) {
+    await page.click('#btn-new');
+    started = await until(() => G.state === 'playing', null, 2000, 'confirmed new game').then(() => true, () => false);
+  }
+  ok(started, 'the second click starts a new game');
   await until(() => G.state === 'playing' && G.inventory.count('kov') === 0, null, 8000, 'confirmed new game starts fresh');
   note('done');
 };

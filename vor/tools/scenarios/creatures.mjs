@@ -20,7 +20,8 @@ export default async (page, h) => {
     for (;;) {
       if (await h.eval(fn, arg)) return true;
       const g = await h.eval(() => G.time);
-      if ((g - g0) * 1000 > ms || Date.now() - t0 > Math.max(60000, ms * 6)) break;
+      // game-time budget; the real-time cap allows game time to run at ~0.05× real time
+      if ((g - g0) * 1000 > ms || Date.now() - t0 > ms * 30 + 30000) break;
       await h.wait(50);
     }
     fail('timed out waiting for ' + what + ' ' + JSON.stringify(await snapshot()));
@@ -179,11 +180,14 @@ export default async (page, h) => {
     return i;
   });
   ok(rodReady >= 0 && rodReady < 8, 'rod in the hotbar');
-  await h.wait(300);
-  ok(await h.eval(() => G.scene.getObjectByName('rod-view') && G.scene.getObjectByName('rod-view').parent === G.player.hand), 'rod view model in the hand');
+  await until(() => G.scene.getObjectByName('rod-view') && G.scene.getObjectByName('rod-view').parent === G.player.hand,
+    null, 3000, 'rod view model in the hand');
+  // hold LMB for `ms` of *game* time (the charge is measured in game time)
   const cast = async (ms) => {
     await page.mouse.down({ button: 'left' });
-    await h.wait(ms);
+    await until(() => G.fishing.state === 'charging' && G.hud.progress > 0, null, 3000, 'rod charging');
+    const g0 = await h.eval(() => G.time), t0 = Date.now();
+    while ((await h.eval(() => G.time)) - g0 < ms / 1000 && Date.now() - t0 < ms * 30 + 30000) await h.wait(30);
     const charging = await h.eval(() => ({ st: G.fishing.state, label: G.hud.progressLabel, p: G.hud.progress }));
     await page.mouse.up({ button: 'left' });
     await until(() => G.fishing.state === 'waiting', null, 8000, 'the bobber to land');
@@ -252,9 +256,8 @@ export default async (page, h) => {
   await h.eval(() => { G.player.teleport(0, -5); });
   ok(await h.eval(() => G.player.inWater), 'swimming for the no-cast check');
   await h.mouse('left', 400);
-  await h.wait(200);
+  await until(() => /vod/.test(G.hud.toolHint), null, 1500, 'swimming hint shown');
   ok(await h.eval(() => G.fishing.state === 'idle'), 'cannot cast while swimming');
-  ok(await h.eval(() => /vod/.test(G.hud.toolHint)), 'swimming hint shown (' + (await h.eval(() => G.hud.toolHint)) + ')');
   await h.eval(() => { G.player.teleport(0, 0); });
   note('fishing ok');
 

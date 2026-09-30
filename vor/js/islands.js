@@ -1319,7 +1319,7 @@
     fx('sparkle', _v2, 0xc9d2da);
     G.sfx('break_wood', { position: _v2, volume: 0.8 });
     G.sfx('pickup', { position: _v2 });
-    G.notify('Ve vraku jsi našel kovový šrot a prkna!', 'good');
+    G.notify('Z vraku máš kovový šrot a prkna!', 'good');
     G.events.emit('island:gathered', { island: isl, kind: 'wreck', items: { kov: nK - lk, prkno: nP - lp } });
     return true;
   }
@@ -1574,7 +1574,7 @@
     isl.visited = true;
     G.stats.islandsVisited = (G.stats.islandsVisited || 0) + 1;
     G.events.emit('island:visited', { island: isl, name: isl.name });
-    G.notify('Vystoupil jsi na ostrov „' + isl.name + '“!', 'good');
+    G.notify('Jsi na ostrově „' + isl.name + '“!', 'good');
     if (G.stats.islandsVisited === 1) {
       G.notify('Otrhej palmy a seber kameny (E).' + (isl.wreck && !isl.wreck.looted ? ' A prohledej vrak!' : ''), 'info');
     }

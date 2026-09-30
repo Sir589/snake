@@ -49,15 +49,18 @@ export default async (page, h) => {
     spawn: typeof G.pirates.spawnRaid, dbg: typeof G.debug.pirates, cannonDef: !!(G.raft.structureDefs && G.raft.structureDefs.cannon),
   }));
   ok(s.api && s.active === false && s.ship === null, 'fresh state: no raid');
-  ok(s.next === 600, 'first raid at 600 s, got ' + s.next);
+  ok(s.next === 900, 'first raid at 900 s, got ' + s.next);
   ok(s.spawn === 'function' && s.dbg === 'function', 'spawnRaid + debug hook exist');
   ok(s.cannonDef, 'cannon structure registered with raft.js');
 
-  s = await h.eval(() => { G.time = 650; return { started: G.pirates.checkNow(), tiles: G.raft.count() }; });
+  s = await h.eval(() => { G.time = 950; return { started: G.pirates.checkNow(), tiles: G.raft.count() }; });
   ok(!s.started, 'no raid with only ' + s.tiles + ' tiles');
   s = await h.eval(() => { G.time = 300; G.debug.buildRing(); return { started: G.pirates.checkNow(), tiles: G.raft.count() }; });
-  ok(!s.started, 'no raid before 600 s');
-  s = await h.eval(() => { G.time = 650; const st = G.pirates.checkNow(); const sh = G.pirates.ship;
+  ok(!s.started, 'no raid before 900 s');
+  s = await h.eval(() => { G.time = 950; return { started: G.pirates.checkNow() }; });
+  ok(!s.started, 'no first raid without a spear');
+  await h.eval(() => G.inventory.add('ostep', 1, 'debug'));
+  s = await h.eval(() => { G.time = 950; const st = G.pirates.checkNow(); const sh = G.pirates.ship;
     return { started: st, tiles: G.raft.count(), active: G.pirates.active, state: sh && sh.state, d: sh ? Math.hypot(sh.position.x, sh.position.z) : 0 }; });
   ok(s.started && s.active, 'raid starts after 600 s with ' + s.tiles + ' tiles');
   ok(s.state === 'approach' && s.d > 150 && s.d < 200, 'ship sails in from ~180 m: ' + s.state + ' ' + s.d.toFixed(1));
@@ -91,7 +94,7 @@ export default async (page, h) => {
   const after = await h.eval(() => { let sum = 0; for (const t of G.raft.tiles.values()) sum += t.hp; return sum; });
   ok(after < before, 'tile hp dropped: ' + before + ' -> ' + after);
   const dmg = (await events('tile:damaged')).filter((e) => e.source === 'cannon');
-  ok(dmg.length === 1 && (Math.abs(dmg[0].amount - 35) < 0.01 || Math.abs(dmg[0].amount - 17.5) < 0.01), 'cannon hit = 35 (17.5 reinforced): ' + JSON.stringify(dmg[0]));
+  ok(dmg.length === 1 && (Math.abs(dmg[0].amount - 25) < 0.01 || Math.abs(dmg[0].amount - 12.5) < 0.01), 'cannon hit = 25 (12.5 reinforced): ' + JSON.stringify(dmg[0]));
   // deliberate miss: splash, no damage
   await h.eval(() => G.pirates.shipFire(false));
   await until(() => G.pirates.balls.length === 0, null, 6, 'miss to land');
@@ -109,7 +112,7 @@ export default async (page, h) => {
   });
   await until(() => G.pirates.balls.length === 0, null, 6, 'close hit');
   s = await h.eval(() => ({ hp: G.player.health, ev: window.__pev.filter((e) => e.n === 'player:damaged' && e.d.source === 'cannon').map((e) => e.d.amount) }));
-  ok(s.ev.length === 1 && s.ev[0] === 25 && hpBefore - s.hp > 24, 'cannonball next to the player: -25 hp, got ' + JSON.stringify(s.ev) + ' hp ' + s.hp.toFixed(2));
+  ok(s.ev.length === 1 && s.ev[0] === 15 && hpBefore - s.hp > 14, 'cannonball next to the player: -15 hp, got ' + JSON.stringify(s.ev) + ' hp ' + s.hp.toFixed(2));
   await h.eval(() => { G.debug.god(true); G.player.health = 100; for (const t of G.raft.tiles.values()) t.hp = t.maxHp; });
 
   // --- rowboat & boarders -------------------------------------------------------------------------
@@ -301,7 +304,7 @@ export default async (page, h) => {
       seated: G.pirates.seated, ov: !!G.player.controlOverride, blocked: G.interaction.blocked, next: G.pirates.nextRaidAt, visible,
       targets: [...G.combat.targets].filter((t) => /pirate/.test(t.kind)).length };
   });
-  ok(!s.active && s.ship === null && s.boarders === 0 && s.balls === 0 && !s.seated && !s.ov && !s.blocked && s.next === 600 && s.visible === 0 && s.targets === 0,
+  ok(!s.active && s.ship === null && s.boarders === 0 && s.balls === 0 && !s.seated && !s.ov && !s.blocked && s.next === 900 && s.visible === 0 && s.targets === 0,
     'new game resets the raid: ' + JSON.stringify(s));
   note('all pirate checks passed');
 };

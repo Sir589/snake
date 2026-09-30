@@ -90,6 +90,8 @@
     { tool: 'place', place: 'anchor' });
   D('kanon', 'Kanón', '💥', 2, 'placeable', '#3c3f44', 'Postav ho na vor a střílej na piráty.',
     { tool: 'place', place: 'cannon' });
+  D('vlajka', 'Vlajka', '🚩', 1, 'placeable', '#0f5e6e', 'Ozdoba voru za pirátské zlaťáky. Vlaje ve větru.',
+    { tool: 'place', place: 'flag' });
   D('koule', 'Dělová koule', '⚫', 20, 'ammo', '#2c2c30', 'Náboj do kanónu. Bum!');
 
   const COOK = Object.create(null), PURIFY = Object.create(null);
@@ -118,6 +120,7 @@
     R('sit', 'sit', 1, { provaz: 6, prkno: 4 }, 'Vor'),
     R('plachta', 'plachta', 1, { prkno: 8, provaz: 6, plast: 6 }, 'Vor'),
     R('kotva', 'kotva', 1, { kov: 4, provaz: 4, kamen: 2 }, 'Vor'),
+    R('vlajka', 'vlajka', 1, { zlato: 15, provaz: 2, prkno: 2 }, 'Vor'),
     R('kanon', 'kanon', 1, { kov: 8, prkno: 6, provaz: 2 }, 'Zbraně'),
     R('koule_kov', 'koule', 3, { kov: 2 }, 'Zbraně', 'Dělové koule (z kovu)'),
     R('koule_kamen', 'koule', 3, { kov: 1, kamen: 2 }, 'Zbraně', 'Dělové koule (z kamene)'),

@@ -376,8 +376,8 @@ export default async (page, h) => {
   await h.eval(() => G.newGame());
   await gw(0.3);
   await h.eval(() => G.toMenu());
-  await h.wait(600);
-  ok(!(await h.eval(() => G.player.hand.visible)), 'hand hidden in the menu');
+  const handHidden = await page.waitForFunction(() => !G.player.hand.visible, null, { timeout: 60000 }).then(() => true, () => false);
+  ok(handHidden, 'hand hidden in the menu');
   await h.eval(() => { G.input.lockFailed = true; G.newGame(); });
   await gw(0.3);
 
@@ -393,7 +393,8 @@ export default async (page, h) => {
   await gw(0.4);
   await h.eval(() => { G.player.health = 5; G.player.damage(20, 'cannon'); });
   await gw(0.1);
-  await h.wait(5000);                      // the death camera animates in wall time (state "dead")
+  // the death camera animates frame by frame in state "dead" (slow headless frames: wait for it)
+  await page.waitForFunction(() => G.state === 'dead' && G.camera.position.y < G.raft.deckY() + 1.45, null, { timeout: 180000 }).catch(() => {});
   s = await st();
   const over = await events('game:over');
   ok(s.state === 'dead' && !s.alive, 'dead');
@@ -406,7 +407,7 @@ export default async (page, h) => {
   await h.eval(() => { G.player.hunger = 0; G.player.health = 2; });
   await gw(3);
   const over2 = await events('game:over');
-  ok(over2.length === 2 && over2[1].reason === 'Umřel jsi hlady.', 'starvation reason: ' + JSON.stringify(over2.map((o) => o.reason)));
+  ok(over2.length === 2 && over2[1].reason === 'Hlad tě přemohl.', 'starvation reason: ' + JSON.stringify(over2.map((o) => o.reason)));
   await h.eval(() => G.newGame());
   await gw(0.3);
   s = await st();

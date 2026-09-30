@@ -57,7 +57,20 @@ export default async (page, h) => {
     const label = await until((t) => { const c = G.interaction.current; return c && c.structure && c.structure.type === t && G.interaction.labelOf(c); }, type, 10000, type + ' under the crosshair');
     return label;
   };
-  const use = async (type) => { const label = await aimUse(type); await h.key('KeyE'); return label; };
+  // Press E on a structure until `check` holds. The deck bobs, so on a slow frame the crosshair can
+  // slip off the structure right when E is processed; then aim again and retry.
+  const use = async (type, check, arg, what) => {
+    let first = null;
+    for (let k = 0; k < 3; k++) {
+      const label = await aimUse(type);
+      if (first === null) first = label;
+      await h.key('KeyE');
+      if (!check) return label;
+      if (await until(check, arg, 3000, what).then(() => true, () => false)) return first;
+      note('E on ' + type + ' did not take, retrying');
+    }
+    return L.fail('timed out waiting for ' + what);
+  };
 
   await place('cisticka', 'purifier', -1, -1);
   await place('gril', 'grill', 0, -1);
@@ -68,29 +81,24 @@ export default async (page, h) => {
   await shot('all-placed');
 
   // --- purifier ---
-  let label = await use('purifier');
+  let label = await use('purifier', () => G.raft.findStructures('purifier')[0].data.state === 'work', null, 'purifier working');
   ok(label === 'Čistit vodu', 'purifier label: ' + label);
-  await until(() => G.raft.findStructures('purifier')[0].data.state === 'work', null, 8000, 'purifier working');
   ok((await h.eval(() => G.inventory.count('kelimek_slany'))) === 0, 'salt water went into the purifier');
   await h.eval(() => { G.raft.findStructures('purifier')[0].data.t = 0.4; });
   await until(() => G.raft.findStructures('purifier')[0].data.state === 'done', null, 20000, 'purifier done');
-  label = await use('purifier');
-  await until(() => G.inventory.count('kelimek_sladky') === 1, null, 8000, 'drinking water collected');
+  label = await use('purifier', () => G.inventory.count('kelimek_sladky') === 1, null, 'drinking water collected');
   ok(true, 'purifier gives drinking water ("' + label + '")');
 
   // --- grill ---
-  label = await use('grill');
-  await until(() => G.raft.findStructures('grill')[0].data.state === 'work', null, 8000, 'grill cooking');
+  label = await use('grill', () => G.raft.findStructures('grill')[0].data.state === 'work', null, 'grill cooking');
   ok(/Gril|Upéct|upéct|Péct/i.test(label), 'grill label: ' + label);
   await h.eval(() => { G.raft.findStructures('grill')[0].data.t = 0.4; });
   await until(() => G.raft.findStructures('grill')[0].data.state === 'done', null, 20000, 'grill done');
-  await use('grill');
-  await until(() => G.inventory.count('sardinka_pecena') === 1, null, 8000, 'cooked sardine collected');
+  await use('grill', () => G.inventory.count('sardinka_pecena') === 1, null, 'cooked sardine collected');
   ok(true, 'grill cooks the sardine');
 
   // --- chest: E opens the storage panel, shift-click moves an item in ---
-  await use('chest');
-  await until(() => G.ui.storageOpen, null, 8000, 'chest panel open');
+  await use('chest', () => G.ui.storageOpen, null, 'chest panel open');
   const wi = await h.eval(() => G.inventory.slots.findIndex((s) => s && s.id === 'kelimek_sladky'));
   await page.click('#inv-slot-' + wi, { modifiers: ['Shift'] });
   await until(() => G.raft.findStructures('chest')[0].data.storage.slots.some((s) => s && s.id === 'kelimek_sladky'), null, 8000, 'item moved into the chest');
@@ -112,26 +120,21 @@ export default async (page, h) => {
   // leftover planks floating right at the net would take the crosshair ("Sebrat: Prkno")
   await h.eval(() => G.debris.clear());
   const p0 = await h.eval(() => G.inventory.count('prkno'));
-  label = await use('net');
-  await until((p) => G.inventory.count('prkno') > p, p0, 8000, 'net emptied into the inventory');
+  label = await use('net', (p) => G.inventory.count('prkno') > p, p0, 'net emptied into the inventory');
   ok(/Vybrat síť/.test(label), 'net catches debris and E empties it ("' + label + '")');
 
   // --- sail: speeds the raft up ---
-  label = await use('sail');
-  await until(() => G.raft.sailUp, null, 8000, 'sail up');
+  label = await use('sail', () => G.raft.sailUp, null, 'sail up');
   await until(() => G.raft.velocity.length() > 1.2, null, 60000, 'raft speeding up');
   ok(label === 'Vytáhnout plachtu', 'sail raised, raft speed ' + (await h.eval(() => G.raft.velocity.length().toFixed(2))) + ' m/s');
   await shot('sail-up');
 
   // --- anchor: stops the raft ---
-  label = await use('anchor');
-  await until(() => G.raft.anchored, null, 8000, 'anchor down');
+  label = await use('anchor', () => G.raft.anchored, null, 'anchor down');
   await until(() => G.raft.velocity.length() < 0.05, null, 90000, 'raft stopped');
   ok(label === 'Spustit kotvu', 'anchor stops the raft');
-  await use('anchor');
-  await until(() => !G.raft.anchored, null, 8000, 'anchor up');
-  await use('sail');
-  await until(() => !G.raft.sailUp, null, 8000, 'sail down');
+  await use('anchor', () => !G.raft.anchored, null, 'anchor up');
+  await use('sail', () => !G.raft.sailUp, null, 'sail down');
 
   const ev = await h.eval(() => window.__s.ev);
   ok(['build:structure', 'purify:done', 'cook:done', 'sail:toggled', 'anchor:toggled'].every((n) => ev.includes(n)), 'structure events fired');

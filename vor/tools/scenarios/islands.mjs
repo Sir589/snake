@@ -11,10 +11,14 @@ export default async (page, h) => {
   const ok = (c, m) => { if (!c) fail(m); };
   const shots = process.env.ISLAND_SHOTS ? process.env.ISLAND_SHOTS.replace(/\/?$/, '/') : null;
   // Headless SwiftShader runs slowly (dt is capped), so wait for conditions instead of fixed times.
+  // The budget is simulated time (G.clock): give up only after `ms` of real AND simulated time.
   const until = async (fn, arg, ms = 10000, what = 'condition') => {
-    const t0 = Date.now();
-    while (Date.now() - t0 < ms) {
+    const clk = () => h.eval(() => G.clock || 0);
+    const t0 = Date.now(), c0 = await clk(), hard = ms * 30 + 30000;
+    for (;;) {
       if (await h.eval(fn, arg)) return true;
+      const el = Date.now() - t0;
+      if (el >= ms && (el >= hard || ((await clk()) - c0) * 1000 >= ms)) break;
       await h.wait(60);
     }
     fail('timed out waiting for ' + what);
@@ -166,6 +170,7 @@ export default async (page, h) => {
   for (let i = 0; i < 40 && !onPalm; i++) {
     await aimAt();
     await h.wait(80);
+    await until(() => G.interaction.current === __palm.it, null, 400, 'crosshair on the palm').catch(() => {});
     onPalm = await h.eval(() => G.interaction.current === __palm.it);
   }
   if (onPalm) {
@@ -183,7 +188,7 @@ export default async (page, h) => {
   ok(c1.kokos - c0.kokos === (hadCoco ? 1 : 0), 'coconut only from a palm with coconuts');
   ok(await h.eval(() => !__palm.it.enabled()), 'picked palm is no longer interactable');
   ok(await h.eval(() => window.__ev.gained.some((e) => e.id === 'list' && e.source === 'island')), 'item:gained source island');
-  await h.wait(700);
+  await until(() => __isl.fr.filter((f) => f.palm === __palm).some((f) => f.state > 0), null, 3000, 'fronds falling').catch(() => {});
   const fr = await h.eval(() => __isl.fr.filter((f) => f.palm === __palm).map((f) => f.state));
   ok(fr.some((s) => s > 0) && fr.some((s) => s === 0), 'the picked palm drops some fronds and keeps others: ' + fr.join(''));
 

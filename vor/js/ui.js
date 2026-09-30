@@ -122,7 +122,7 @@
     'Kladivem rozšíříš vor a opravíš poškozená prkna.',
   ];
   const STAT_NAMES = [
-    ['days', 'Přežité dny'],
+    ['days', 'Den'],
     ['fishCaught', 'Chycené ryby'],
     ['piratesSunk', 'Potopené pirátské lodě'],
     ['piratesDefeated', 'Poražení piráti'],
@@ -296,8 +296,8 @@
     '<div class="screen scr-card scr-victory is-hidden" id="scr-victory">' +
       '<div class="card">' +
         '<div class="victory-star">' + ICON.star + '</div>' +
-        '<h2 class="card-title">Jsi pán širého moře!</h2>' +
-        '<p class="card-sub">Přežil jsi 7 dní na otevřeném moři. Vor je tvůj domov – hraj dál, jak dlouho chceš.</p>' +
+        '<h2 class="card-title">Širé moře je tvoje!</h2>' +
+        '<p class="card-sub">7 dní na otevřeném moři – zvládnuto! Vor je tvůj domov. Hraj dál, jak dlouho chceš.</p>' +
         '<dl class="over-stats" id="victory-stats"></dl>' +
         '<nav class="card-buttons"><button type="button" class="btn btn-primary" id="btn-victory-continue">Hrát dál</button></nav>' +
       '</div>' +
@@ -748,7 +748,7 @@
         allDoneAt = t + 9000;
         shownGoal = null;
         setText(E['goal-num'], 'Všechny úkoly');
-        setText(E['goal-text'], 'Hotovo! Jsi opravdový mořeplavec.');
+        setText(E['goal-text'], 'Hotovo! Širé moře je tvoje.');
         setHTML(E['goal-steps'], '');
         showEl(E['goal-prog'], false);
         setText(E['goal-hint'], 'Hraj dál, rozšiřuj vor a objevuj ostrovy.');
@@ -1476,19 +1476,22 @@
     if (a && e && e.contains(a) && a.blur) a.blur();
   }
   const OVERLAY_BLOCK = { help: 'ui-help', settings: 'ui-settings', victory: 'ui-victory' };
+  const overlayFocus = [];           // the element that had focus when each overlay opened
   function pushOverlay(name) {
     if (!built || topOverlay() === name) return;
     const i = overlays.indexOf(name);
-    if (i >= 0) overlays.splice(i, 1);
+    if (i >= 0) { overlays.splice(i, 1); overlayFocus.splice(i, 1); }
+    overlayFocus.push(document.activeElement && document.activeElement !== document.body ? document.activeElement : null);
     if (invOpen) closeInventory(true);
     overlays.push(name);
     if (G.state === 'playing' && !G.paused) {
+      G.setUIBlock(OVERLAY_BLOCK[name], true);
       // full-screen help / victory card: the world must not keep running behind it (shark!)
       if (name === 'help' || name === 'victory') {
         pausedByOverlay = true;
         G.setPaused(true);
-        if (!G.paused) { pausedByOverlay = false; G.setUIBlock(OVERLAY_BLOCK[name], true); }
-      } else G.setUIBlock(OVERLAY_BLOCK[name], true);
+        if (!G.paused) pausedByOverlay = false;
+      }
     }
     sfx('ui_open', 0.5);
     refreshScreens();
@@ -1496,6 +1499,7 @@
   function popOverlay(silent) {
     const name = overlays.pop();
     if (!name) return;
+    const back = overlayFocus.pop();
     G.setUIBlock(OVERLAY_BLOCK[name], false);
     if (!silent) sfx('ui_close', 0.5);
     if (!overlays.length && pausedByOverlay) {
@@ -1503,19 +1507,24 @@
       if (G.state === 'playing' && G.paused) G.setPaused(false);
     }
     refreshScreens();
+    // keyboard users land back on the button that opened the overlay
+    if (back && back.isConnected && back.focus && !coarse() && !back.closest('.is-hidden')) {
+      try { back.focus({ preventScroll: true }); } catch (err) { /* ignore */ }
+    }
   }
   function toggleHelp() {
     if (topOverlay() === 'help') popOverlay();
     else if (G.state !== 'boot') pushOverlay('help');
   }
 
+  function daysAgo(n) { return n <= 1 ? 'před 1 dnem' : 'před ' + n + ' dny'; }
   function saveInfo() {
     const d = G.save && G.save.read ? G.save.read() : null;
     if (!d) return null;
     let when = '';
     if (d.savedAt) {
       const min = Math.floor((Date.now() - d.savedAt) / 60000);
-      when = min < 1 ? 'právě teď' : min < 60 ? 'před ' + min + ' min' : min < 60 * 24 ? 'před ' + Math.floor(min / 60) + ' h' : 'před ' + Math.floor(min / 1440) + ' d';
+      when = min < 1 ? 'právě teď' : min < 60 ? 'před ' + min + ' min' : min < 60 * 24 ? 'před ' + Math.floor(min / 60) + ' h' : daysAgo(Math.floor(min / 1440));
     }
     const day = d.stats && d.stats.days ? d.stats.days : 1;
     return 'Den ' + day + (when ? ' · uloženo ' + when : '');
@@ -1525,7 +1534,9 @@
     showEl(E['btn-continue'], !!info);
     setText(E['continue-info'], info || '');
     setCls(E['btn-new'], 'btn-primary', !info);
-    setText($('menu-foot'), coarse() ? 'Hra se sama ukládá.' : 'Hra se sama ukládá. Pauza: Esc.');
+    const persistent = !G.save || G.save.persistent !== false;
+    setText($('menu-foot'), !persistent ? 'Ukládání tu nefunguje – po zavření stránky se postup ztratí.'
+      : coarse() ? 'Hra se sama ukládá.' : 'Hra se sama ukládá. Pauza: Esc.');
     newConfirmUntil = 0;
     setText(E['btn-new'], 'Nová hra');
   }

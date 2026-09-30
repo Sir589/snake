@@ -97,6 +97,16 @@ export default async (page, h) => {
   const inv = await h.eval(() => { const r = document.getElementById('inv-panel').getBoundingClientRect(); return { x: r.left, r: r.right, y: r.top, b: r.bottom, sw: document.documentElement.scrollWidth, W: innerWidth }; });
   ok(inv.x >= -1 && inv.r <= inv.W + 1 && inv.sw <= inv.W, 'inventory panel fits the width (' + JSON.stringify(inv) + ')');
   await shot('inventory');
+  // tap to move: tap a stack to pick it up, tap an empty slot to put it down
+  await h.eval(() => G.inventory.add('makrela', 2, 'debug'));
+  const mi = await h.eval(() => G.inventory.slots.findIndex((s) => s && s.id === 'makrela'));
+  await tapSel('#inv-slot-' + mi);
+  await until(() => { const hs = G.ui.heldSlot(); return hs && hs.id === 'makrela'; }, null, 5000, 'tap picks up the stack');
+  const free = await h.eval(() => { for (let i = 27; i >= 8; i--) if (!G.inventory.slots[i]) return i; return -1; });
+  ok(free >= 8, 'a free backpack slot for the tap test');
+  await tapSel('#inv-slot-' + free);
+  await until((f) => !G.ui.heldSlot() && G.inventory.slots[f] && G.inventory.slots[f].id === 'makrela', free, 5000, 'tap puts the stack down');
+  ok(true, 'tap to pick up / put down in the inventory');
   await page.tap('#btn-inv-close');
   await until(() => !G.ui.isOpen() && G.touch.visible, null, 8000, 'inventory closed, touch controls back');
 

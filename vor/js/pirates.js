@@ -1635,7 +1635,7 @@
     snd('pirate_yell', _p, 0.9);
     G.stats.piratesSunk = (G.stats.piratesSunk || 0) + 1;
     G.events.emit('pirates:sunk', { x: s.position.x, z: s.position.z });
-    G.notify('Potopil jsi pirátskou loď!', 'good');
+    G.notify('Pirátská loď jde ke dnu!', 'good');
     banner('Pirátská loď potopena!', 'good', 3.5);
     for (const b of boarders) if (b.state === 'fight' && G.chance(0.6)) say(b, G.pick(LINES.sunk), 2.2);
     // floating wreckage
@@ -2712,6 +2712,8 @@
     if (G.uiBlocking()) return;
     e.stopImmediatePropagation();
     e.preventDefault();
+    // the same Escape also releases pointer lock: do not let core turn that into a pause
+    if (document.pointerLockElement) G._suppressLockPause = true;
     seat.wantStand = true;
   }
 

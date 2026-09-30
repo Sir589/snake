@@ -68,7 +68,8 @@ listed here (or add a clearly documented extra to *your own* module).
 `G.C` constants, `G.rand/randInt/pick/chance/clamp/lerp/damp/weighted`, `G.events.on/off/emit`,
 `G.notify(text, kind)` (kind: `info|good|warn|danger`), `G.sfx(name, {position, volume})`,
 `G.stats` counters (days, piratesSunk, piratesDefeated, sharksKilled, fishCaught, tilesBuilt,
-itemsCrafted, islandsVisited, debrisCollected — modules increment the ones they own),
+itemsCrafted, islandsVisited, debrisCollected, gold — modules increment the ones they own; ui.js
+counts `gold`),
 `G.settings` (sensitivity, volume, music, invertY, quality) + `G.saveSettings()`,
 `G.input` (keys by `KeyboardEvent.code`: `down/pressed/released`, `mouseDown/mousePressed/mouseReleased(b)`,
 `mouse.dx/dy/wheel`, `axes()` → `{x, y}` with y = forward, `looking()`, `touchMode`,
@@ -140,6 +141,7 @@ Icons are emoji; `color` is used as the slot tint / held-model colour.
 | plachta | Plachta | ⛵ | 1 | placeable | place `sail` |
 | kotva | Kotva | ⚓ | 1 | placeable | place `anchor` |
 | kanon | Kanón | 💥 | 2 | placeable | place `cannon` |
+| vlajka | Vlajka | 🚩 | 1 | placeable | place `flag` (decoration, streams with the wind) |
 | koule | Dělová koule | ⚫ | 20 | ammo | |
 
 Cooking (grill): sardinka→sardinka_pecena, makrela→makrela_pecena, tunak→tunak_peceny,
@@ -161,6 +163,7 @@ zralok_maso→zralok_peceny. Purifying: kelimek_slany→kelimek_sladky.
 | sit | sit | 6 provaz, 4 prkno | Vor |
 | plachta | plachta | 8 prkno, 6 provaz, 6 plast | Vor |
 | kotva | kotva | 4 kov, 4 provaz, 2 kamen | Vor |
+| vlajka | vlajka | 15 zlato, 2 provaz, 2 prkno | Vor |
 | kanon | kanon | 8 kov, 6 prkno, 2 provaz | Zbraně |
 | koule_kov | 3 koule | 2 kov | Zbraně |
 | koule_kamen | 3 koule | 1 kov, 2 kamen | Zbraně |
@@ -252,6 +255,7 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
     if any sail is raised; `sail:toggled {up}`.
   - `anchor` (Kotva): E toggles dropped/raised (rope animation), `G.raft.anchored`;
     `anchor:toggled {down}`.
+  - `flag` (Vlajka): decoration on a pole, the cloth streams with the wind (no interaction).
   - (The `cannon` type is registered by pirates.js.)
 - Tools: `hammer` (ghost preview: aiming at water next to the raft edge → green/red ghost
   foundation; LMB builds; aiming at a damaged tile → LMB repairs; aiming at an undamaged normal
@@ -277,7 +281,7 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
   Mouse sensitivity from `G.settings`. Subtle head bob; camera sway on the raft.
 - Stats: hunger −100 per 9 min, thirst −100 per 6.5 min (×1.5 while sprinting/swimming);
   at 0 you lose 1.5 hp/s; regen 0.6 hp/s when hunger > 50 and thirst > 50. Death →
-  `G.gameOver(reason)` with a Czech reason (`'Umřel jsi hlady.'`, `'Umřel jsi žízní.'`,
+  `G.gameOver(reason)` with a Czech reason (`'Hlad tě přemohl.'`, `'Žízeň tě přemohla.'`,
   `'Sežral tě žralok.'`, `'Porazili tě piráti.'`, `'Zasáhla tě dělová koule.'`).
 - Held items: reads `G.inventory.getSelected()`; dispatches to `G.tools.get(def.tool)` —
   or `'place'` for placeables, `'consume'` for foods/drinks. On selection change: `onUnequip`
@@ -299,7 +303,7 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
   Items bob on `waveHeight` and slowly spin. Meshes: plank, plastic bottle/cluster, palm leaf,
   barrel (sud). Instanced where practical.
 - Barrel loot: prkno 2–4, plast 2–4, list 1–3 (always); kov 1–2 (40 %), provaz 1 (30 %),
-  sardinka 1 (20 %), kokos 1 (15 %), kelimek 1 (8 %).
+  sardinka 1 (20 %), kokos 1 (15 %), kelimek 1 (8 %), kamen 1 (12 %).
 - API: `list`, `spawn(type, pos?)`, `spawnItem(id, count, pos)` (floating crate/bundle with any
   items — used for shark meat and pirate loot), `collect(d, storage?)` (into the player inventory
   by default, or into a storage object; emits `debris:collected`, `G.stats.debrisCollected++`,
@@ -339,24 +343,29 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
   `G.player.setControlOverride` (camera behind the barrel, mouse aims yaw ±70° / pitch,
   LMB fires if the inventory has `koule` (consumes one; 2.5 s reload), E or Esc gets up).
   Cannonball = ballistic projectile, splash on water, `explosion` on hit.
-- Pirate raids: first when `G.time > 600` and the raft has ≥ 6 tiles (checked every 30 s),
-  then every 480–720 s. `pirates:sighted` + `G.notify('Piráti na obzoru!', 'danger')` +
+- Pirate raids: first when `G.time > 900`, the raft has ≥ 8 tiles **and the player owns a spear**
+  (goal `ostep` done or one in the inventory; checked every 30 s), then every 480–720 s. `pirates:sighted` + `G.notify('Piráti na obzoru!', 'danger')` +
   `G.sfx('warning')`. A three-masted-ish pirate ship (hull, deck, masts, black sails with a
   skull drawn on a canvas texture, cannons, flag, lanterns at night) sails in from 180 m,
   then circles at ~35–45 m.
   - Every 6–8 s it fires a cannonball at a random tile (35 % miss into the sea); a hit calls
     `G.raft.damageTile(tile, 35, 'cannon')`; within 2 m of the player → `damage(25, 'cannon')`.
-  - After 20 s it launches a rowboat with 2–3 boarders who climb onto the raft and chase the
+    The first two raids are gentler: 25 tile damage, 15 player damage within 1.5 m, 45 % miss.
+    Each sunk ship makes later raids a bit harder (faster fire, +100 ship hp up to 600, more boarders).
+  - After 20 s it launches a rowboat with 2–3 boarders (1–2 in the first raid, whose melee hits
+    for 7) who climb onto the raft and chase the
     player (walk on `G.ground`), melee 10 dmg per 1.2 s. Boarders are combat targets (60 hp;
     spear 25 dmg → knock-back). Killing one: `pirate:killed`, `G.stats.piratesDefeated++`,
     drops `zlato` 3–8 directly into the inventory.
   - Ship: combat target with 300 hp, player cannonball 60 dmg. At 0 hp it lists, burns and
     sinks (smoke, explosions), `pirates:sunk`, `G.stats.piratesSunk++`, floats 4–6 loot bundles
-    (`kov` 3–6, `koule` 3–5, `zlato` 10–30, `prkno` 5–10, maybe `kelimek_sladky`).
-  - If the ship is not sunk it leaves after 150 s of combat (and once the boarders are
-    defeated): `pirates:left`.
-- API: `active`, `ship`, `nextRaidAt`, `spawnRaid()`.
-- Save: `nextRaidAt` (a raid in progress is not saved; it simply ends).
+    (`kov` 3–6, `koule` 3–5, `zlato` 10–30, `prkno` 5–10, maybe `kelimek_sladky`); the bundles
+    surface upstream of the raft so they drift past within hook reach.
+  - If the ship is not sunk it leaves after 150 s of combat, or 25 s after its crew is gone;
+    boarders give up and jump back into the sea after 60 s: `pirates:left`.
+- API: `active`, `ship`, `nextRaidAt`, `spawnRaid()`; extras `raids` (count so far), `tune`
+  (the current raid's numbers).
+- Save: `nextRaidAt`, `raids` (a raid in progress is not saved; it simply ends).
 - Debug: `G.debug.pirates()`.
 
 ### islands.js — `G.islands` (order 25)
@@ -401,7 +410,7 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
   10. Navštiv ostrov
   11. Postav kanón
   12. Potop pirátskou loď
-  13. Přežij 7 dní (final: `Jsi pán širého moře!`)
+  13. Přežij 7 dní (final: `Širé moře je tvoje!`)
 - API: `list` (`{id, text, hint, done, progress, target}`), `current()`, emits `goal:done`,
   notifies `'Úkol splněn: …'` (kind good). Save: completed ids + counters.
 
@@ -489,6 +498,13 @@ Debug hooks (`G.debug.*`) exist so scenarios can jump straight to pirates, storm
 
 These are part of the contract now; other modules may rely on them.
 
+- **Core extras.** `G.applyQuality()` (pixel ratio from `G.settings.quality`: low 1, high ≤ 1.5;
+  runs at boot, on resize and on `settings:changed`); first run on touch / small screens defaults
+  to `quality: 'low'`, and a game that keeps running under ~28 fps drops to low once
+  (`G.settings.autoLowered`). `G.fps` / `G.frameMs` are measured from the raw frame interval.
+  `G.clock` (sum of frame dt in every state) and `G.frameNo` for tests. `G.save.persistent`
+  (false when localStorage is unavailable; the last save is then kept in memory for this session)
+  and event `save:failed`. `continueGame` accepts only finite, non-negative `time` / known stats.
 - **Hand / camera.** `G.player.hand` (THREE.Group on the camera, lower right). player.js adds a
   handler's `viewModel` to it on equip and removes it on unequip; handlers animate their own
   view model. World-space rope/line starts: `G.player.hand.getWorldPosition(v)` (or a tip Object3D
@@ -512,7 +528,7 @@ These are part of the contract now; other modules may rely on them.
   `steam`, `ripple`, `emit({...})`, `clear()`; fx are visual only (callers play their own sfx).
   The ocean is transparent (renderOrder −1, depthWrite on): transparent things *under* water need
   renderOrder < −1. `sun.castShadow` stays true (never toggle it). Storm damage: world.js hits a
-  random edge tile for 5–9 every 14–24 s while `storm > 0.65`; raft.js adds its own 8-damage hit
+  random edge tile for 8–14 every 8–14 s while `storm > 0.65`; raft.js adds its own 8-damage hit
   only when world.js has not hit the raft in the last 14 s.
 - **G.raft extras.** `getTile(i, j)`, `isEdge`, `structureAt(x, z)`, `canBuildAt(i, j)`,
   paid `build/repair/reinforce`, `destroyTile`, `speed()`, `COST`, `MAX_SPAN` (12),

@@ -65,7 +65,7 @@
   G.stats = {};
   function resetStats() {
     G.stats = { days: 1, piratesSunk: 0, piratesDefeated: 0, sharksKilled: 0, fishCaught: 0,
-      tilesBuilt: 0, itemsCrafted: 0, islandsVisited: 0, debrisCollected: 0 };
+      tilesBuilt: 0, itemsCrafted: 0, islandsVisited: 0, debrisCollected: 0, gold: 0 };
   }
   resetStats();
 
@@ -73,10 +73,19 @@
   // Settings (per-viewer, localStorage)
   // ---------------------------------------------------------------------------
   G.settings = { sensitivity: 1, volume: 0.8, music: 0.5, invertY: false, quality: 'high' };
+  let savedSettings = null;
   try {
-    const s = JSON.parse(localStorage.getItem(G.SETTINGS_KEY) || 'null');
-    if (s) Object.assign(G.settings, s);
+    savedSettings = JSON.parse(localStorage.getItem(G.SETTINGS_KEY) || 'null');
   } catch (e) { /* storage unavailable */ }
+  if (savedSettings && typeof savedSettings === 'object') Object.assign(G.settings, savedSettings);
+  else {
+    // First run: phones / tablets and small screens start on low quality (fill rate is the cost).
+    try {
+      const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+      const small = Math.min(window.screen ? screen.width : 9999, window.screen ? screen.height : 9999) < 600;
+      if (coarse || small) G.settings.quality = 'low';
+    } catch (e) { /* ignore */ }
+  }
   G.saveSettings = () => {
     try { localStorage.setItem(G.SETTINGS_KEY, JSON.stringify(G.settings)); } catch (e) { /* ignore */ }
     G.events.emit('settings:changed', G.settings);
@@ -181,7 +190,10 @@
 
   window.addEventListener('keydown', (e) => {
     if (isTypingTarget(e.target)) return;
-    if (GAME_KEYS.has(e.code)) e.preventDefault();
+    // In menus / panels let Space and Enter activate the focused button natively.
+    const menuButton = e.target && e.target.tagName === 'BUTTON' &&
+      (G.state !== 'playing' || G.paused || G.uiBlocking());
+    if (GAME_KEYS.has(e.code) && !(menuButton && e.code === 'Space')) e.preventDefault();
     if (!input.keys[e.code]) input._pressed.add(e.code);
     input.keys[e.code] = true;
   });
@@ -285,8 +297,14 @@
     const data = G.save.read();
     if (!data) return G.newGame();
     resetAll();
-    G.time = data.time || 0;
-    Object.assign(G.stats, data.stats || {});
+    const t = Number(data.time);
+    G.time = Number.isFinite(t) && t >= 0 ? t : 0;
+    const st = data.stats && typeof data.stats === 'object' ? data.stats : {};
+    for (const k in G.stats) {
+      if (st[k] === undefined) continue;
+      const v = Number(st[k]);
+      if (Number.isFinite(v) && v >= 0) G.stats[k] = k === 'days' ? Math.max(1, Math.floor(v)) : Math.floor(v);
+    }
     for (const m of G.modules) {
       if (m.load && data.modules && data.modules[m.name] !== undefined) {
         try { m.load(data.modules[m.name]); } catch (err) { console.error('[load ' + m.name + ']', err); }
@@ -311,13 +329,25 @@
     G.state = 'dead';
     G.save.clear();
     input.exitLock();
-    G.events.emit('game:over', { reason: reason || 'Zemřel jsi.', stats: Object.assign({}, G.stats), time: G.time });
+    G.events.emit('game:over', { reason: reason || 'Moře tě přemohlo.', stats: Object.assign({}, G.stats), time: G.time });
   };
 
   // ---------------------------------------------------------------------------
   // Save / load (localStorage, per viewer)
   // ---------------------------------------------------------------------------
+  // The last written save is also kept in memory, so "Pokračovat" works for the rest of the
+  // session even when localStorage is unavailable (sandboxed iframe, strict privacy, full quota).
+  let memSave = null;
+  let failNotified = false;
   G.save = {
+    persistent: (function probeStorage() {
+      try {
+        const k = G.SAVE_KEY + '-probe';
+        localStorage.setItem(k, '1');
+        localStorage.removeItem(k);
+        return true;
+      } catch (e) { return false; }
+    })(),
     write() {
       if (G.state !== 'playing') return false;
       const data = { version: G.VERSION, time: G.time, stats: G.stats, savedAt: Date.now(), modules: {} };
@@ -326,17 +356,31 @@
         try { const d = m.save(); if (d !== undefined) data.modules[m.name] = d; }
         catch (err) { console.error('[save ' + m.name + ']', err); }
       }
-      try { localStorage.setItem(G.SAVE_KEY, JSON.stringify(data)); return true; }
-      catch (e) { return false; }
+      let json;
+      try { json = JSON.stringify(data); } catch (e) { return false; }
+      memSave = json;
+      try { localStorage.setItem(G.SAVE_KEY, json); return true; }
+      catch (e) {
+        if (G.save.persistent) G.save.persistent = false;
+        G.events.emit('save:failed');
+        if (!failNotified) { failNotified = true; G.notify('Hru se nepodařilo uložit.', 'warn'); }
+        return false;
+      }
     },
     read() {
+      let raw = null;
+      try { raw = localStorage.getItem(G.SAVE_KEY); } catch (e) { raw = null; }
+      if (!raw) raw = memSave;
       try {
-        const d = JSON.parse(localStorage.getItem(G.SAVE_KEY) || 'null');
-        return d && d.version === G.VERSION ? d : null;
+        const d = JSON.parse(raw || 'null');
+        return d && typeof d === 'object' && d.version === G.VERSION ? d : null;
       } catch (e) { return null; }
     },
     exists() { return !!this.read(); },
-    clear() { try { localStorage.removeItem(G.SAVE_KEY); } catch (e) { /* ignore */ } },
+    clear() {
+      memSave = null;
+      try { localStorage.removeItem(G.SAVE_KEY); } catch (e) { /* ignore */ }
+    },
   };
   window.addEventListener('pagehide', () => G.save.write());
   document.addEventListener('visibilitychange', () => {
@@ -455,17 +499,27 @@
   // ---------------------------------------------------------------------------
   // Renderer, scene, camera
   // ---------------------------------------------------------------------------
+  // Render resolution follows the quality setting (fill rate is the biggest cost: full-screen
+  // transparent ocean + sky shaders with MSAA). Called at boot, on resize and on settings change.
+  G.applyQuality = () => {
+    if (!G.renderer) return;
+    const low = G.settings.quality === 'low';
+    const pr = Math.min(window.devicePixelRatio || 1, low ? 1 : 1.5);
+    if (G.renderer.getPixelRatio() !== pr) G.renderer.setPixelRatio(pr);
+    G.renderer.setSize(window.innerWidth, window.innerHeight);
+  };
+  G.events.on('settings:changed', () => G.applyQuality());
+
   function createRenderer() {
     const container = document.getElementById('game');
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, G.settings.quality === 'low' ? 1 : 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    G.renderer = renderer;
+    G.applyQuality();
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
     container.appendChild(renderer.domElement);
-    G.renderer = renderer;
 
     G.scene = new THREE.Scene();
     G.camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 1500);
@@ -476,7 +530,7 @@
     window.addEventListener('resize', () => {
       G.camera.aspect = window.innerWidth / window.innerHeight;
       G.camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      G.applyQuality();
     });
     bindMouse(renderer.domElement);
   }
@@ -486,14 +540,39 @@
   // ---------------------------------------------------------------------------
   let last = 0, autosaveTimer = 0;
   G.fps = 60;
+  G.frameMs = 1000 / 60;   // smoothed real milliseconds per frame
+  G.clock = 0;             // sum of frame dt since boot (all states)
+  G.frameNo = 0;           // animation frames rendered since boot
+
+  // Once per player: if the game keeps stuttering on 'high', drop to 'low' and say so. Skipped
+  // under automation (navigator.webdriver), where software rendering is always slow.
+  let slowT = 0;
+  function autoQuality(raw) {
+    if (G.settings.quality === 'low' || G.settings.autoLowered || navigator.webdriver) return;
+    slowT = G.fps < 28 ? slowT + Math.min(raw, 0.5) : Math.max(0, slowT - raw * 2);
+    if (slowT < 6) return;
+    slowT = 0;
+    G.settings.quality = 'low';
+    G.settings.autoLowered = true;
+    G.saveSettings();
+    G.notify('Grafika je teď na nízké kvalitě, aby hra běžela plynuleji. Změníš to v Nastavení.', 'info');
+  }
 
   function loop(now) {
     requestAnimationFrame(loop);
-    const dt = Math.min(0.05, Math.max(0, (now - (last || now)) / 1000));
+    // fps is measured from the raw frame interval (dt itself is capped at 0.05 s).
+    const raw = (now - (last || now)) / 1000;
+    const dt = Math.min(0.05, Math.max(0, raw));
     last = now;
-    if (dt > 0) G.fps = G.lerp(G.fps, 1 / dt, 0.05);
+    G.clock += dt;           // simulated seconds in every state (menus and pause too)
+    G.frameNo++;
+    if (raw > 0) {
+      G.fps = G.lerp(G.fps, 1 / raw, 0.05);
+      G.frameMs = G.lerp(G.frameMs, raw * 1000, 0.05);
+    }
 
     const playing = G.isPlaying();
+    if (playing && raw > 0) autoQuality(raw);
     if (playing) {
       G.time += dt;
       autosaveTimer += dt;

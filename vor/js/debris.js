@@ -57,6 +57,7 @@
     if (G.chance(0.20)) out.push(['sardinka', 1]);
     if (G.chance(0.15)) out.push(['kokos', 1]);
     if (G.chance(0.08)) out.push(['kelimek', 1]);
+    if (G.chance(0.12)) out.push(['kamen', 1]);     // stones for the anchor before the first island
     return out;
   }
 

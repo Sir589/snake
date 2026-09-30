@@ -194,15 +194,15 @@
   // ---------------------------------------------------------------------------
   function reasonFor(src) {
     const s = String(src || '').toLowerCase();
-    if (s === 'hunger' || s === 'starve' || s === 'starving') return 'Umřel jsi hlady.';
-    if (s === 'thirst' || s === 'dehydration') return 'Umřel jsi žízní.';
+    if (s === 'hunger' || s === 'starve' || s === 'starving') return 'Hlad tě přemohl.';
+    if (s === 'thirst' || s === 'dehydration') return 'Žízeň tě přemohla.';
     if (s.indexOf('shark') >= 0) return 'Sežral tě žralok.';
     if (s.indexOf('cannon') >= 0 || s === 'ball') return 'Zasáhla tě dělová koule.';
     if (s.indexOf('pira') >= 0 || s.indexOf('board') >= 0 || s === 'sword' || s === 'melee') return 'Porazili tě piráti.';
-    if (s === 'saltwater') return 'Vypil jsi moc slané vody.';
-    if (s === 'food' || s === 'raw') return 'Otrávil ses syrovým jídlem.';
+    if (s === 'saltwater') return 'Slaná voda ti ublížila.';
+    if (s === 'food' || s === 'raw') return 'Syrové jídlo ti ublížilo.';
     if (s === 'lightning' || s === 'storm') return 'Zasáhl tě blesk.';
-    return 'Umřel jsi.';
+    return 'Moře tě přemohlo.';
   }
 
   function hurt(amount, source, dir, bypass) {
@@ -388,7 +388,7 @@
       waterTipShown = true;
       const R = raftOK();
       if (R && Math.hypot(pos.x, pos.z) < 25) {
-        G.notify('Spadl jsi do moře! U okraje voru vylezeš ' + (G.input.touchMode ? 'tlačítkem ⤒.' : 'mezerníkem.'), 'info');
+        G.notify('Žbluňk! Jsi v moři. U okraje voru vylezeš ' + (G.input.touchMode ? 'tlačítkem ⤒.' : 'mezerníkem.'), 'info');
       }
     }
   }

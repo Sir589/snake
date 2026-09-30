@@ -152,6 +152,7 @@ try {
     paused: G.paused,
     time: Math.round(G.time * 10) / 10,
     fps: Math.round(G.fps),
+    frameMs: Math.round(G.frameMs || 0),
     modules: G.modules.map((m) => m.name + (m._errored ? '(ERRORED)' : '')),
     player: G.player && G.player.position ? {
       pos: G.player.position.toArray().map((v) => Math.round(v * 100) / 100),

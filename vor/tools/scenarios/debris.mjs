@@ -8,10 +8,14 @@ export default async (page, h) => {
   const fail = (m) => { throw new Error('[debris] ' + m); };
   const ok = (c, m) => { if (!c) fail(m); };
   // Headless SwiftShader runs slowly (dt is capped), so wait for conditions instead of fixed times.
+  // The budget is simulated time (G.clock): give up only after `ms` of real AND simulated time.
   const until = async (fn, arg, ms = 12000, what = 'condition') => {
-    const t0 = Date.now();
-    while (Date.now() - t0 < ms) {
+    const clk = () => h.eval(() => G.clock || 0);
+    const t0 = Date.now(), c0 = await clk(), hard = ms * 30 + 30000;
+    for (;;) {
       if (await h.eval(fn, arg)) return true;
+      const el = Date.now() - t0;
+      if (el >= ms && (el >= hard || ((await clk()) - c0) * 1000 >= ms)) break;
       await h.wait(60);
     }
     fail('timed out waiting for ' + what);
