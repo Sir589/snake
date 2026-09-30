@@ -537,6 +537,13 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Diving (ROADMAP 6).** player.js: in the water KeyQ (touch ⤓) dives (`G.player.diving`), underwater movement
+  follows the view pitch, Space / Q rise / sink; `breath` 0..100 (≈32 s of air, refills in ≈3.5 s at the surface), at 0
+  damage source `drown` ("Došel ti dech pod vodou."); `depth` = water above the eyes. Floors: `G.seabed.heightAt` or
+  island ground; ceilings: raft tiles (logs) / holds. js/seabed.js (order 27): ground-fixed group at
+  `G.world.groundOffset`, sand floor grid, instanced corals / sea grass / rocks / shells per 16 m ground cell
+  (deterministic hash), reef fish and treasure chests (`treasure:opened`, opened cells saved); drawn only while
+  `G.world.underwater`. Debug: `G.debug.seabedChest()`.
 - **Storm strength (ROADMAP 5).** `G.world.stormPower` 0.6 / 1 / 1.5 and `stormName` (Přeháňka / Bouře / Silná bouře)
   are picked when a storm starts (stronger ones later in the game); `stormStrength()` = storm × power scales the
   waves, storm hits (70 % go for wooden tiles; reinforced ×0.6, metal ×0.3) and lightning (power ≥ 0.9 only).

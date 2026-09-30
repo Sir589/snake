@@ -476,6 +476,8 @@ body:not(.is-desktop) .ui-root .desktop-only { display: none !important; }
 .stat-health { --c: var(--health); }
 .stat-hunger { --c: var(--hunger); }
 .stat-thirst { --c: var(--thirst); }
+.stat-breath { --c: #9fe6ff; }
+.stat-breath .stat-ico { color: #9fe6ff; }
 .stat-val { font-size: 14px; font-weight: 800; text-align: right; color: var(--foam-dim); }
 .stat.low .stat-bar { border-color: var(--coral); }
 .stat.low .stat-val { color: #ffb49a; }

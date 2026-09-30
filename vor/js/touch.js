@@ -67,6 +67,7 @@
 .tc-alt { --sz: 54px; right: 13px; bottom: 94px; }
 .tc-act { --sz: 64px; right: 86px; bottom: 80px; }
 .tc-rot { --sz: 52px; right: 162px; bottom: 90px; }
+.tc-dive { --sz: 56px; right: 168px; bottom: 6px; }
 .tc-inv { --sz: 54px; right: 13px; bottom: 162px; }
 .tc-pause { --sz: 48px; right: 16px; bottom: 230px; }
 .tc-pause svg { width: 40%; height: 40%; }
@@ -132,6 +133,7 @@
     { id: 'alt', label: 'Vedlejší akce', html: ICON.alt, mouse: 2 },
     { id: 'act', label: 'Použít věc před sebou (E)', html: '<span class="tc-txt">E</span>', key: 'KeyE' },
     { id: 'rot', label: 'Otočit', html: ICON.rot, key: 'KeyR' },
+    { id: 'dive', label: 'Potopit se', html: '<span class="tc-txt">⤓</span>', key: 'KeyQ' },
     { id: 'inv', label: 'Inventář', html: '<span class="tc-emo">🎒</span>', key: 'Tab' },
     { id: 'pause', label: 'Pauza', html: ICON.pause, tap: () => G.setPaused(true) },
   ];
@@ -222,6 +224,7 @@
     }
     badgeEl = B.use.el.querySelector('.tc-badge');
     B.rot.el.classList.add('tc-gone');
+    B.dive.el.classList.add('tc-gone');
     root.appendChild(cluster);
     root.addEventListener('contextmenu', (e) => e.preventDefault());
     host.appendChild(root);
@@ -436,7 +439,7 @@
     let need = 0;
     for (let i = 0; i < btns.length; i++) {
       const b = btns[i];
-      if (b.el.classList.contains('tc-gone') && b.def.id !== 'rot') continue;
+      if (b.el.classList.contains('tc-gone') && b.def.id !== 'rot' && b.def.id !== 'dive') continue;
       const r = b.el.getBoundingClientRect();
       const bottom0 = r.bottom + raise;              // this button's bottom edge with no raise
       for (let j = 0; j < huds.length; j++) {
@@ -524,6 +527,13 @@
         overrideShown = ov;
         root.classList.toggle('tc-override', ov);
         if (ov) { endStick(); release(B.jump); release(B.alt); release(B.rot); }
+      }
+
+      // the dive button only shows while swimming
+      const wet = !!(G.player && G.player.inWater);
+      if (wet === B.dive.el.classList.contains('tc-gone')) {
+        B.dive.el.classList.toggle('tc-gone', !wet);
+        if (!wet) release(B.dive);
       }
 
       const slot = G.inventory && typeof G.inventory.getSelected === 'function' ? G.inventory.getSelected() : null;

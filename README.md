@@ -6,11 +6,12 @@ rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ost
 
 - Spuštění: otevři `vor/index.html` v prohlížeči. Hra běží úplně offline (three.js je v `vor/lib/`, písma ve `vor/fonts/`).
 - Ovládání PC: WASD pohyb, myš rozhlížení, levé tlačítko = použít (hák: drž a pusť, pak drž = navíjet),
-  E = akce, Tab = batoh a crafting, 1–8 = výběr předmětu, Esc = pauza, H = nápověda.
+  E = akce, Tab = batoh a crafting, 1–8 = výběr předmětu, Esc = pauza, H = nápověda, Q = potopit se.
 - Stavění jako v Minecraftu: s kladivem v ruce vyber blok (Z / X nebo klepnutím v nabídce) – dřevo, podlaha,
   schody, okna, dveře, střecha, kámen, zábradlí, lucerny a barevné bloky. Levé tlačítko staví, pravé bourá (materiál se vrátí),
   R otáčí. Stavět jde do výšky až 16 bloků, takže i vícepatrové domy.
 - Jemné stavění: prkénka, trámy, sloupy a půlbloky na mřížce 25 cm (G přepne na 50 cm), R otáčí.
+- Potápění: ve vodě Q = dolů, Mezerník = nahoru; na dně jsou korály, rybky a truhly s pokladem. Pozor na dech!
 - Bouře mají různou sílu: v silné bouři se vor naklání, láme nezpevněné díly a velké vlny smetou hráče od okraje.
 - Díly voru mají tři úrovně: dřevo → zpevněný → okovaný (kladivem); vor může mít až 32 × 32 dílů.
 - Velká plachta přes celý vor (rychlejší plavba), stožár s košem na rozhlížení, dalekohled (podrž levé tlačítko),

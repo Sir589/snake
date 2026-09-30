@@ -24,7 +24,10 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    *Hotovo:* Přeháňka / Bouře / Silná bouře (s dny přibývá silných), vlny podle síly, vor se ve vlnách naklání,
    bouře láme hlavně nezpevněné díly (zpevněné berou 60 %, kovové 30 %), v silné bouři chodí velké vlny s varováním –
    kdo stojí u okraje, spadne do moře; zeď nebo zábradlí ho udrží. Test: `tools/scenarios/storms.mjs`.
-6. **Potápění**: plavání pod hladinu, pěkné dno (korály, ryby, poklady), dech.
+6. ✅ **HOTOVO – Potápění**: plavání pod hladinu, pěkné dno (korály, ryby, poklady), dech.
+   *Hotovo:* ve vodě Q = potopit se, Mezerník = nahoru, pod vodou se plave směrem pohledu. Dech ~30 s (ukazatel v HUD),
+   pak se hráč topí. Dno ~10–16 m: písečné duny, korály, mořská tráva, kameny, mušle, barevné rybky a občas truhla
+   s pokladem (zlato, kov…). Vor je zespodu strop. Na mobilu tlačítko ⤓. Test: `tools/scenarios/dive.mjs`.
 7. **Ostrovy**: každý jiný – velikost, tvar, druhy stromů, skály, jeskyně.
 8. **Zvířata na voru**: kráva, slepice, ovce, koza, prase (krmení, produkty) a papoušek, kterého jde pojmenovat.
 9. **Pohled z první osoby u kanónu** (kanón už se otáčí o 360°).

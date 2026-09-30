@@ -276,7 +276,7 @@ export default async (page, h) => {
   await h.eval(() => { for (const b of G.pirates.boarders) if (!b.defeated && b.target) { b.pos.set(1, b.pos.y, 1); b.kbx = b.kbz = 0; for (let i = 0; i < 4 && b.target && b.target.alive(); i++) b.target.onHit(25, new THREE.Vector3(0, 0, 1), 'spear'); } });
   await until(() => !G.pirates.active, null, 6, 'raid to end');
   s = await h.eval(() => ({ next: G.pirates.nextRaidAt, t: G.time, def: G.stats.piratesDefeated }));
-  ok(s.next >= s.t + 479 && s.next <= s.t + 721, 'next raid in 480–720 s: ' + (s.next - s.t).toFixed(0));
+  ok(s.next >= s.t + 419 && s.next <= s.t + 601, 'next raid in 420–600 s: ' + (s.next - s.t).toFixed(0));
 
   // --- a raid where the ship gives up and leaves ---------------------------------------------------
   await h.eval(() => { G.debug.pirates('near'); const sh = G.pirates.ship; sh.fireT = 999; sh.boatLaunched = true; sh.combatTime = 149.9; });

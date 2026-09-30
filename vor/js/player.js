@@ -18,6 +18,8 @@
   const SHORE_UP = 1.25;                 // how far above the sea a swimmer can walk out onto land
   const WADE = 1.05;                     // water deeper than this over the ground → swimming
   const SWIM_EYE = 0.24;                 // eye above the local wave surface while swimming
+  // Diving (ROADMAP 6): Q dives, Space rises, underwater you swim where you look.
+  const DIVE_SPEED = 2.6, BREATH_TIME = 32, BREATH_REFILL = 3.5, DROWN_DPS = 7;
   const CLIMB_REACH = 0.8 + RAD;         // centre distance to a raft tile edge for climbing
   const CLIMB_TIME = 0.62;
   const PITCH_MAX = (85 * Math.PI) / 180;
@@ -65,6 +67,9 @@
     god: false,
     lastDamageSource: null,
     zoom: 1,                  // camera magnification (the telescope sets it; 1 = normal view)
+    breath: 100,              // air while diving (0..100)
+    diving: false,            // swimming under the surface
+    depth: 0,                 // metres of water above the eyes
     // shove the player horizontally (m/s) for a moment; walls stop it like walking
     push(vx, vz, dur) { push.set(Number(vx) || 0, 0, Number(vz) || 0); pushT = Math.max(0, Number(dur) || 0.5); shake = Math.max(shake, 0.6); },
     controlOverride: null,
@@ -187,6 +192,7 @@
   function setWater(b) {
     if (P.inWater === b) return;
     P.inWater = b;
+    if (!b) P.diving = false;
     G.events.emit('player:water', b);
   }
 
@@ -218,6 +224,7 @@
     if (s === 'saltwater') return 'Slaná voda ti ublížila.';
     if (s === 'food' || s === 'raw') return 'Syrové jídlo ti ublížilo.';
     if (s === 'lightning' || s === 'storm') return 'Zasáhl tě blesk.';
+    if (s === 'drown') return 'Došel ti dech pod vodou.';
     return 'Moře tě přemohlo.';
   }
 
@@ -534,8 +541,82 @@
     }
   }
 
+  // Floor for a diver: the sea bed (seabed.js) or an island slope.
+  function diveFloor(x, z, y) {
+    const S = G.seabed;
+    let f = S && typeof S.heightAt === 'function' ? S.heightAt(x, z) : -14;
+    const g = sampleGround(x, z, y + 0.6, true);
+    if (g && g.h > f) f = g.h;
+    return f;
+  }
+  // Ceiling for a diver under the raft: the logs under the deck, or the bottom of a hold.
+  function diveCeil(x, z) {
+    const R = raftOK();
+    if (!R || !R.tileAt(x, z)) return Infinity;
+    const hold = R.holdAt && R.holdAt(x, z);
+    return deckY() + (hold ? R.HOLD_FLOOR - 0.2 : -0.6);
+  }
+  function moveDive(dt, ctl, surf) {
+    const inp = G.input, pos = P.position, vel = P.velocity;
+    let ax = 0, ay = 0;
+    if (ctl) { const a = inp.axes(); ax = a.x; ay = a.y; }
+    const sy = Math.sin(P.yaw), cy = Math.cos(P.yaw), sp = Math.sin(P.pitch), cp = Math.cos(P.pitch);
+    let wx = -sy * cp * ay + cy * ax, wy = sp * ay, wz = -cy * cp * ay - sy * ax;
+    if (ctl && inp.down('Space')) wy += 1;
+    if (ctl && inp.down('KeyQ')) wy -= 1;
+    const l = Math.hypot(wx, wy, wz);
+    if (l > 1) { wx /= l; wy /= l; wz /= l; }
+    const dv = G.world && G.world.driftVelocity;
+    vel.x = damp(vel.x, wx * DIVE_SPEED + (dv ? dv.x * 0.3 : 0), 3, dt);
+    vel.z = damp(vel.z, wz * DIVE_SPEED + (dv ? dv.z * 0.3 : 0), 3, dt);
+    vel.y = damp(vel.y, wy * DIVE_SPEED + 0.22, 3, dt);            // a little buoyancy
+    let nx = pos.x + vel.x * dt, nz = pos.z + vel.z * dt;
+    if (wallAt(nx, nz, pos.y + 0.5, true)) {
+      if (!wallAt(nx, pos.z, pos.y + 0.5, true)) { nz = pos.z; vel.z = 0; }
+      else if (!wallAt(pos.x, nz, pos.y + 0.5, true)) { nx = pos.x; vel.x = 0; }
+      else { nx = pos.x; nz = pos.z; vel.x = 0; vel.z = 0; }
+    }
+    // no swimming up into the raft from below
+    const ceil = diveCeil(nx, nz);
+    if (pos.y + 1.8 > ceil && diveCeil(pos.x, pos.z) === Infinity) { nx = pos.x; nz = pos.z; vel.x = 0; vel.z = 0; }
+    pos.x = nx; pos.z = nz;
+    pos.y += vel.y * dt;
+    const c2 = diveCeil(pos.x, pos.z);
+    if (pos.y + 1.8 > c2) { pos.y = c2 - 1.8; if (vel.y > 0) vel.y = 0; }
+    const floor = diveFloor(pos.x, pos.z, pos.y);
+    if (pos.y < floor + 0.05) { pos.y = floor + 0.05; if (vel.y < 0) vel.y = 0; }
+    // back at the surface
+    const s2 = waveH(pos.x, pos.z);
+    if (pos.y + EYE_H >= s2 + SWIM_EYE - 0.05 && !(ctl && inp.down('KeyQ')) && c2 === Infinity) {
+      P.diving = false;
+      vel.y = Math.min(vel.y, 0.5);
+      _v.set(pos.x, s2, pos.z);
+      if (G.fx) G.fx.splash(_v, 0.5);
+      G.sfx('splash', { position: _v, volume: 0.4 });
+      return;
+    }
+    // strokes
+    strokeT += dt;
+    if (l > 0.1 && strokeT > 0.9) {
+      strokeT = 0;
+      strokePulse = 1;
+      G.sfx('bubble', { volume: 0.35 });
+    }
+  }
+
   function moveSwim(dt, ctl) {
     const inp = G.input, pos = P.position, vel = P.velocity;
+    if (P.diving) { moveDive(dt, ctl, waveH(pos.x, pos.z)); return; }
+    if (ctl && inp.down('KeyQ')) {
+      // dive under
+      P.diving = true;
+      vel.y = Math.min(vel.y, -2.4);
+      _v.set(pos.x, waveH(pos.x, pos.z), pos.z);
+      if (G.fx) G.fx.splash(_v, 0.7);
+      G.sfx('splash', { position: _v, volume: 0.5 });
+      if (!diveTipShown) { diveTipShown = true; G.notify('Potápíš se! Pod vodou plaveš, kam se díváš. Nahoru Mezerník, dolů Q. Hlídej si dech.', 'info'); }
+      return;
+    }
     const moving = wishDir(ctl, _wish);
     P.sprinting = false;
     const dv = G.world && G.world.driftVelocity;
@@ -858,8 +939,30 @@
   // ---------------------------------------------------------------------------
   // Stats
   // ---------------------------------------------------------------------------
+  let drownT = 0, breathWarned = false, diveTipShown = false;
+  function updateBreath(dt) {
+    const pos = P.position;
+    const eye = pos.y + EYE_H, surf = waveH(pos.x, pos.z);
+    P.depth = P.inWater ? Math.max(0, surf - eye) : 0;
+    const under = P.inWater && eye < surf - 0.08;
+    if (P.god) { P.breath = 100; return; }
+    if (under) {
+      P.breath = Math.max(0, P.breath - (100 / BREATH_TIME) * dt);
+      if (P.breath < 30 && !breathWarned) { breathWarned = true; G.notify('Dochází ti dech! Vyplav nahoru (' + (G.input.touchMode ? '⤒' : 'Mezerník') + ').', 'danger'); }
+      if (P.breath <= 0) {
+        drownT += dt;
+        if (drownT >= 1) { drownT -= 1; hurt(DROWN_DPS, 'drown', null, true); }
+      }
+    } else {
+      P.breath = Math.min(100, P.breath + (100 / BREATH_REFILL) * dt);
+      drownT = 0;
+      if (P.breath > 60) breathWarned = false;
+    }
+  }
   function updateStats(dt) {
-    if (P.god || !P.alive) return;
+    if (!P.alive) return;
+    updateBreath(dt);
+    if (P.god) return;
     const moving = Math.hypot(P.velocity.x, P.velocity.z) > 0.5;
     const mult = P.inWater || (P.sprinting && moving) ? 1.5 : 1;
     P.hunger = Math.max(0, P.hunger - HUNGER_RATE * mult * dt);
@@ -1577,6 +1680,7 @@
     fovCur = baseFov;
     P.zoom = 1;
     pushT = 0;
+    P.breath = 100; P.diving = false; P.depth = 0; drownT = 0; breathWarned = false;
     const cam = G.camera;
     if (cam && Math.abs(cam.fov - baseFov) > 0.01) { cam.fov = baseFov; cam.updateProjectionMatrix(); }
     P.hand.visible = false;

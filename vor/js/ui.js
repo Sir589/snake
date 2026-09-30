@@ -91,7 +91,8 @@
     bang: SV('<path fill="currentColor" d="M10.6 3.5h2.8l-.5 11h-1.8zM12 16.8a1.9 1.9 0 1 1 0 3.8 1.9 1.9 0 0 1 0-3.8z"/>'),
     star: SV('<path fill="currentColor" d="M12 2.8l2.6 6.1 6.6.5-5 4.3 1.6 6.4L12 16.7l-5.8 3.4 1.6-6.4-5-4.3 6.6-.5z"/>'),
   };
-  const STAT_ICON = { health: ICON.heart, hunger: ICON.fish, thirst: ICON.drop };
+  const STAT_ICON = { health: ICON.heart, hunger: ICON.fish, thirst: ICON.drop,
+    breath: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="17" r="1.6" fill="currentColor"/></svg>' };
   const STAT_KEYS = ['health', 'hunger', 'thirst'];
 
   // ---------------------------------------------------------------------------
@@ -113,6 +114,7 @@
     ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
     ['Jemné díly (prkénko, trám, sloup, půlblok)', K('G') + ' mřížka 25 / 50 cm, ' + K('R') + ' otočit', 'vyber díl v nabídce kladiva'],
     ['Dalekohled', 'podrž levé tlačítko, pravé = zvětšení 4× / 8×', '● podrž, ◐ zvětšení'],
+    ['Potápění (ve vodě)', K('Q') + ' dolů, ' + K('Mezerník') + ' nahoru, plaveš kam se díváš', '⤓ dolů, ⤒ nahoru'],
     ['Podpalubí', 'kladivo → Podpalubí pod díl voru, dolů poklopem (' + K('E') + ')', 'kladivo → Podpalubí, E u poklopu'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
     ['Nápověda', K('H'), '—'],
@@ -207,7 +209,7 @@
         '</div>' +
       '</div>' +
 
-      '<div class="stats" id="stats">' + stat('health', 'Zdraví') + stat('hunger', 'Hlad') + stat('thirst', 'Žízeň') + '</div>' +
+      '<div class="stats" id="stats">' + stat('health', 'Zdraví') + stat('hunger', 'Hlad') + stat('thirst', 'Žízeň') + stat('breath', 'Dech') + '</div>' +
 
       '<div class="hotbar-wrap">' +
         '<div class="held-name" id="held-name"></div>' +
@@ -451,7 +453,7 @@
     E.cursorIcon = E['cursor-stack'].querySelector('.slot-icon');
     E.cursorCount = E['cursor-stack'].querySelector('.slot-count');
 
-    for (const k of ['health', 'hunger', 'thirst']) {
+    for (const k of ['health', 'hunger', 'thirst', 'breath']) {
       const s = $('stat-' + k);
       statEls[k] = { el: s, bar: s.querySelector('.stat-bar i'), val: s.querySelector('.stat-val'), last: -1 };
     }
@@ -555,6 +557,18 @@
       setText(st.val, Math.ceil(v));
       setCls(st.el, 'low', pct < 0.25);
       setCls(st.el, 'crit', pct < 0.1);
+    }
+    // breath: only while diving or catching air again
+    const br = statEls.breath;
+    if (br) {
+      const b = Math.max(0, Math.min(100, Number(P.breath)));
+      const show = G.isPlaying() && (P.diving || b < 99.5);
+      setCls(br.el, 'is-hidden', !show);
+      const r = Math.round(b / 100 * 200) / 200;
+      if (r !== br.last) { br.last = r; br.bar.style.transform = 'scaleX(' + r + ')'; }
+      setText(br.val, Math.ceil(b));
+      setCls(br.el, 'low', b < 30);
+      setCls(br.el, 'crit', b < 10);
     }
     const hp = Number(P.health) / (P.maxHealth || 100);
     setCls(E['fx-lowhp'], 'on', G.isPlaying() && P.alive !== false && hp < 0.3);
