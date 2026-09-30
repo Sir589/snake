@@ -11,7 +11,7 @@
   // ---------------------------------------------------------------------------
   // Tunables
   // ---------------------------------------------------------------------------
-  const MAX_SPAN = 12;                          // max raft size in tiles along each axis
+  const MAX_SPAN = 24;                          // max raft size in tiles along each axis
   const HP_NORMAL = 100, HP_REINFORCED = 150;
   const COST = {
     foundation: { prkno: 2, plast: 2 },

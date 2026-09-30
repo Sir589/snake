@@ -25,7 +25,7 @@
   const BOARDER_HP = 60, MELEE_DMG = 10, MELEE_CD = 1.2, MELEE_RANGE = 1.3;
   const BOARDER_SPEED = 2.5, BOAT_SPEED = 2.6;
   const BALL_V = 30, BALL_G = 12, RELOAD = 2.5, BALL_R = 0.19;
-  const YAW_LIMIT = 70 * DEG, PITCH_MIN = -5 * DEG, PITCH_MAX = 35 * DEG;
+  const YAW_LIMIT = 180 * DEG, PITCH_MIN = -5 * DEG, PITCH_MAX = 35 * DEG;
   const TRUNNION_Y = 0.52, TRUNNION_Z = 0.3, BARREL_LEN = 0.95;
   const LOOK_K = 0.0022;
 
