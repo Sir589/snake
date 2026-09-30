@@ -517,10 +517,10 @@ export default async (page, h) => {
 
       step('span limit & debug hooks', () => {
         mod.reset();
-        for (let i = 1; i <= 10; i++) R.addTile(i, 0);
-        eq(R.canBuildAt(11, 0), 'size', 'span limit'); eq(R.build(11, 0), false, 'no build past limit');
+        for (let i = 1; i <= 22; i++) R.addTile(i, 0);
+        eq(R.canBuildAt(23, 0), 'size', 'span limit'); eq(R.build(23, 0), false, 'no build past limit');
         G.debug.buildRing();
-        for (const t of R.tiles.values()) ok(t.i >= -1 && t.i <= 10, 'ring respects span');
+        for (const t of R.tiles.values()) ok(t.i >= -1 && t.i <= 22, 'ring respects span');
         mod.reset();
         eq(G.debug.buildRing(), 8, 'buildRing');
         const n = R.count();

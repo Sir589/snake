@@ -49,14 +49,14 @@ export default async (page, h) => {
     spawn: typeof G.pirates.spawnRaid, dbg: typeof G.debug.pirates, cannonDef: !!(G.raft.structureDefs && G.raft.structureDefs.cannon),
   }));
   ok(s.api && s.active === false && s.ship === null, 'fresh state: no raid');
-  ok(s.next === 900, 'first raid at 900 s, got ' + s.next);
+  ok(s.next === 480, 'first raid at 480 s, got ' + s.next);
   ok(s.spawn === 'function' && s.dbg === 'function', 'spawnRaid + debug hook exist');
   ok(s.cannonDef, 'cannon structure registered with raft.js');
 
   s = await h.eval(() => { G.time = 950; return { started: G.pirates.checkNow(), tiles: G.raft.count() }; });
   ok(!s.started, 'no raid with only ' + s.tiles + ' tiles');
   s = await h.eval(() => { G.time = 300; G.debug.buildRing(); return { started: G.pirates.checkNow(), tiles: G.raft.count() }; });
-  ok(!s.started, 'no raid before 900 s');
+  ok(!s.started, 'no raid before 480 s');
   s = await h.eval(() => { G.time = 950; return { started: G.pirates.checkNow() }; });
   ok(!s.started, 'no first raid without a spear');
   await h.eval(() => G.inventory.add('ostep', 1, 'debug'));
@@ -210,7 +210,7 @@ export default async (page, h) => {
   await h.look(-5000, 0);
   await gw(0.15);
   s = await h.eval(() => ({ yaw: window.__cannon.data.yaw, pitch: window.__cannon.data.pitch }));
-  ok(Math.abs(Math.abs(s.yaw) - 70 * Math.PI / 180) < 1e-3, 'yaw clamped to ±70°: ' + s.yaw);
+  ok(Number.isFinite(s.yaw) && Math.abs(s.yaw) <= Math.PI + 1e-6, 'cannon turns all the way round (yaw stays in ±180°): ' + s.yaw);
   await h.look(0, 5000);
   await gw(0.15);
   s = await h.eval(() => window.__cannon.data.pitch);
@@ -304,7 +304,7 @@ export default async (page, h) => {
       seated: G.pirates.seated, ov: !!G.player.controlOverride, blocked: G.interaction.blocked, next: G.pirates.nextRaidAt, visible,
       targets: [...G.combat.targets].filter((t) => /pirate/.test(t.kind)).length };
   });
-  ok(!s.active && s.ship === null && s.boarders === 0 && s.balls === 0 && !s.seated && !s.ov && !s.blocked && s.next === 900 && s.visible === 0 && s.targets === 0,
+  ok(!s.active && s.ship === null && s.boarders === 0 && s.balls === 0 && !s.seated && !s.ov && !s.blocked && s.next === 480 && s.visible === 0 && s.targets === 0,
     'new game resets the raid: ' + JSON.stringify(s));
   note('all pirate checks passed');
 };

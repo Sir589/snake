@@ -49,7 +49,7 @@ export default async (page, h) => {
   ok(s0.api, 'G.islands API (list / spawnIsland / nearest)');
   ok(s0.dbg && s0.mod, 'G.debug.island + module registered');
   ok(s0.n === 0 && s0.islandProviders === 0, 'a new game starts with no islands (menu scenery removed)');
-  ok(s0.next > 170 && s0.next <= 180, 'first island scheduled at ~180 s (got ' + s0.next + ')');
+  ok(s0.next > 65 && s0.next <= 75, 'first island scheduled at ~75 s (got ' + s0.next + ')');
 
   // --- debug island next to the raft ---------------------------------------------------------------
   const s1 = await h.eval(() => {
@@ -346,7 +346,7 @@ export default async (page, h) => {
       stat: G.stats.islandsVisited, next: G.islands.timeToNext() };
   });
   ok(rs.n === 0 && !rs.prov && !rs.its && !rs.groups, 'new game: no islands, providers, interactables or meshes left');
-  ok(rs.stat === 0 && rs.next > 170, 'new game: counters and schedule reset');
+  ok(rs.stat === 0 && rs.next > 65, 'new game: counters and schedule reset');
   await h.eval(() => { const isl = G.debug.island(); G.debug.teleport(0, 0); return !!isl; });
   note('all island checks passed');
 };
