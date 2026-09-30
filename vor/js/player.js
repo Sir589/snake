@@ -135,14 +135,15 @@
 
   // Highest walkable surface under (x, z) at or below maxY. Returns a shared scratch object
   // { h, p } (copy the values before sampling again) or null. skipRaft ignores the raft deck.
-  function sampleGround(x, z, maxY, skipRaft) {
+  function sampleGround(x, z, maxY, skipRaft, skipBlocks) {
     const list = G.ground.providers;
     let best = null, bh = -Infinity;
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
-      if (skipRaft && p.kind === 'raft') continue;
+      if (skipRaft && (p.kind === 'raft' || p.kind === 'blocks')) continue;
+      if (skipBlocks && p.kind === 'blocks') continue;
       let h;
-      try { h = p.heightAt(x, z); } catch (e) { continue; }
+      try { h = p.heightAt(x, z, maxY); } catch (e) { continue; }
       if (h === null || h === undefined || !(h <= maxY)) continue;
       if (h > bh) { bh = h; best = p; }
     }
@@ -151,8 +152,12 @@
     return _gs;
   }
   function wallAt(x, z, limitY, skipRaft) {
-    const g = sampleGround(x, z, Infinity, skipRaft);
+    const g = sampleGround(x, z, Infinity, skipRaft, true);
     return !!g && g.h > limitY;
+  }
+  // Built blocks (build.js) between the step height and the top of the head.
+  function blockWall(x, z, limitY, headY) {
+    return !!(G.build && G.build.blocks.size && G.build.blocked(x, z, limitY, headY, 0.3));
   }
 
   // Tool handler calls never break the controller; each failure is reported once.
@@ -463,10 +468,13 @@
     // horizontal move; terrain higher than a step blocks (slide along the other axis)
     const ox = pos.x, oz = pos.z, prevY = pos.y;
     let nx = ox + vel.x * dt, nz = oz + vel.z * dt;
-    const lim = prevY + STEP_UP;
-    if (wallAt(nx, nz, lim, false)) {
-      if (!wallAt(nx, oz, lim, false)) { nz = oz; vel.z = 0; }
-      else if (!wallAt(ox, nz, lim, false)) { nx = ox; vel.x = 0; }
+    const lim = prevY + STEP_UP, head = prevY + 1.8;
+    // if we are already stuck inside a block (e.g. just climbed onto it), let us walk out
+    const stuck = blockWall(ox, oz, lim, head);
+    const hit = (x, z) => wallAt(x, z, lim, false) || (!stuck && blockWall(x, z, lim, head));
+    if (hit(nx, nz)) {
+      if (!hit(nx, oz)) { nz = oz; vel.z = 0; }
+      else if (!hit(ox, nz)) { nx = ox; vel.x = 0; }
       else { nx = ox; nz = oz; vel.x = 0; vel.z = 0; }
     }
     pos.x = nx; pos.z = nz;
@@ -476,8 +484,9 @@
       vel.y = 0;
     }
 
-    // vertical + ground
+    // vertical + ground (a block overhead stops a jump)
     pos.y += vel.y * dt;
+    if (vel.y > 0 && blockWall(pos.x, pos.z, pos.y + 1.45, pos.y + 1.85)) { pos.y = prevY; vel.y = 0; }
     const wasOn = P.onGround;
     const g = sampleGround(pos.x, pos.z, Math.max(prevY, pos.y) + STEP_UP, false);
     const gh = g ? g.h : -Infinity, gp = g ? g.p : null;
@@ -574,7 +583,9 @@
     climbT = -1;
     P.climbing = false;
     const surf = waveH(x, z);
-    const g = sampleGround(x, z, Infinity, false);
+    // prefer the deck level (ground floor of a house) over roofs and upper floors
+    let g = sampleGround(x, z, deckY() + 0.3, false);
+    if (!g) g = sampleGround(x, z, Infinity, false);
     if (g && g.h > surf - WADE) {
       pos.y = g.h;
       P.onGround = true;

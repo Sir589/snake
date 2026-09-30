@@ -400,7 +400,7 @@
     sample(x, z, maxY = Infinity) {
       let best = null;
       for (const p of this.providers) {
-        const h = p.heightAt(x, z);
+        const h = p.heightAt(x, z, maxY);
         if (h === null || h === undefined || h > maxY) continue;
         if (!best || h > best.height) best = { height: h, provider: p };
       }

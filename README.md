@@ -7,6 +7,9 @@ rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ost
 - Spuštění: otevři `vor/index.html` v prohlížeči (je potřeba internet kvůli knihovně three.js).
 - Ovládání PC: WASD pohyb, myš rozhlížení, levé tlačítko = použít (hák: drž a pusť, pak drž = navíjet),
   E = akce, Tab = batoh a crafting, 1–8 = výběr předmětu, Esc = pauza, H = nápověda.
+- Stavění jako v Minecraftu: s kladivem v ruce vyber blok (Z / X nebo klepnutím v nabídce) – dřevo, podlaha,
+  schody, okna, dveře, střecha, kámen, zábradlí, lucerny a barevné bloky. Levé tlačítko staví, pravé bourá (materiál se vrátí),
+  R otáčí. Stavět jde do výšky až 16 bloků, takže i vícepatrové domy.
 - Mobil: joystick vlevo, tažení prstem vpravo = rozhlížení, tlačítka pro akce.
 - Návrh a rozhraní modulů: `vor/DESIGN.md`. Testy: `node vor/tools/run-all.mjs` (potřebuje Playwright).
 

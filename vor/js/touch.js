@@ -476,7 +476,7 @@
   function updateHeld(id) {
     const d = id && G.items && typeof G.items.def === 'function' ? G.items.def(id) : null;
     if (badgeEl) badgeEl.textContent = d && d.icon ? d.icon : '';
-    const placeable = !!(d && (d.place || d.category === 'placeable'));
+    const placeable = !!(d && (d.place || d.category === 'placeable' || d.tool === 'hammer'));
     B.rot.el.classList.toggle('tc-gone', !placeable);
     if (!placeable) release(B.rot);
     const tool = d ? (d.tool || (d.place ? 'place' : null)) : null;

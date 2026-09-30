@@ -110,6 +110,7 @@
     ['Rychlá lišta', K('1') + '–' + K('8') + ' nebo kolečko myši', 'klepni na políčko'],
     ['Inventář a výroba', K('Tab') + ' nebo ' + K('I') + ', výroba ' + K('C'), '🎒'],
     ['Otočit stavbu', K('R') + ' nebo pravé tlačítko myši', '◐ nebo ↻'],
+    ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
     ['Nápověda', K('H'), '—'],
     ['Ztlumit zvuk', K('M'), '—'],
@@ -120,6 +121,7 @@
     'Syrové ryby upeč na grilu – zasytí mnohem víc.',
     'Žralok nesnese oštěp. Radši moc neplavej.',
     'Kladivem rozšíříš vor a opravíš poškozená prkna.',
+    'S kladivem v ruce stavíš z bloků: domy, patra, schody, okna i dveře.',
   ];
   const STAT_NAMES = [
     ['days', 'Den'],
