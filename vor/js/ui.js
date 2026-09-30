@@ -1747,7 +1747,7 @@
       if (e && e.target === 'player') eventBanner('Žralok! Rychle z vody!', 'danger', 2.5, 'shark-p', 12000);
       else eventBanner('Žralok útočí na vor!', 'danger', 3, 'shark', 25000);
     });
-    on('world:storm', (e) => { if (e && e.active) eventBanner('Blíží se bouře!', 'warn', 3.5, 'storm', 30000); });
+    on('world:storm', (e) => { if (e && e.active) eventBanner(e.text || 'Blíží se bouře!', e.power > 1.2 ? 'danger' : 'warn', 3.5, 'storm', 30000); });
     on('tile:destroyed', () => eventBanner('Vor přišel o kus!', 'danger', 2.5, 'tile', 5000));
     on('goal:done', (e) => {
       if (e && e.final) victoryPending = now() + 1600;

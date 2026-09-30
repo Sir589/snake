@@ -107,6 +107,11 @@
     underwater: false,      // camera below the surface this frame
     hemi: null,             // the HemisphereLight
     stormActive() { return stormTarget > 0; },
+    // Storm strength (ROADMAP 5): 0.6 "přeháňka", 1 "bouře", 1.5 "silná bouře" while a storm runs.
+    stormPower: 1,
+    stormName: '',
+    // storm ramp × strength: > 1 only in a strong storm at its peak
+    stormStrength() { return world.storm * world.stormPower; },
     windAngle: 0,           // current wind heading (rad), windDir = (cos, 0, sin)
     // Shallow turquoise water around an island. `target` is an Object3D (its world position is
     // read every frame) or any {x, z} object; returns a handle for removeShallow(). Max 4 shown.
@@ -126,6 +131,23 @@
   let windAngle0 = 0, windClock = 0;
   let stormTarget = 0, stormRemain = 0, stormCalm = 150, lightningT = 8, stormHitT = 6;
   let stormSpill = false;   // this storm will wash one stack out of a net (20 % of storms)
+  let bigWaveT = 15, bigWavePending = -1, crackNotified = false;
+  const STORM_KINDS = [
+    { power: 0.6, name: 'Přeháňka', banner: 'Blíží se přeháňka – slabá bouře.' },
+    { power: 1, name: 'Bouře', banner: 'Blíží se bouře!' },
+    { power: 1.5, name: 'Silná bouře', banner: 'Blíží se silná bouře! Drž se dál od okraje voru.' },
+  ];
+  function stormKindFor(power) {
+    let best = STORM_KINDS[1];
+    for (const k of STORM_KINDS) if (Math.abs(k.power - power) < Math.abs(best.power - power)) best = k;
+    return best;
+  }
+  // Later days bring stronger storms.
+  function pickStormPower() {
+    const d = world.day || 1;
+    const w = d <= 2 ? [55, 45, 0] : d <= 4 ? [30, 50, 20] : [20, 45, 35];
+    return STORM_KINDS[G.weighted([[0, w[0]], [1, w[1]], [2, w[2]]])].power;
+  }
   let thunderT = -1, thunderVol = 1;
   let flash = 0, flashAge = 10, boltT = 0;
   let clock = 0;                 // cosmetic clock (all states)
@@ -370,6 +392,7 @@
     uniform float uInner;
     uniform sampler2D uRaftMap;
     uniform float uDeckY;
+    uniform vec2 uTilt;          // deck slope (dy/dx, dy/dz) while a storm rocks the raft
     uniform float uFogDensity;
     uniform float uUnder;
     uniform vec3 uUnderCol;
@@ -399,7 +422,7 @@
       vGrad = vec2(dx, dz);
       // keep the water below the deck under the raft (no waves poking through the planks)
       float occ = texture2D(uRaftMap, (p.xz * 0.5 + 32.0) / 64.0).r;
-      h = mix(h, min(h, uDeckY - 0.2), smoothstep(0.3, 0.62, occ));
+      h = mix(h, min(h, uDeckY + dot(uTilt, p.xz) - 0.2), smoothstep(0.3, 0.62, occ));
       p.y = h;
       vWorld = p;
       vOcc = occ;
@@ -835,7 +858,7 @@
           uUnder: U.uUnder, uUnderCol: U.uUnderCol,
           uWave: { value: waves }, uWaveL: { value: lens },
           uStep: { value: built.step }, uInner: { value: built.half * 0.96 },
-          uRaftMap: { value: raftTex }, uDeckY: { value: 0.35 },
+          uRaftMap: { value: raftTex }, uDeckY: { value: 0.35 }, uTilt: { value: new THREE.Vector2() },
           uNoise: { value: noiseTex }, uGo: { value: new THREE.Vector2() }, uScroll: { value: new THREE.Vector4() },
           uWind: { value: new THREE.Vector2(1, 0) },
           uDeep: { value: new THREE.Color() }, uScat: { value: new THREE.Color() }, uFoamCol: { value: new THREE.Color() },
@@ -1471,19 +1494,26 @@
   // =============================================================================================
   // Weather
   // =============================================================================================
-  function startStorm(duration) {
+  function startStorm(duration, power) {
     if (stormTarget > 0) { stormRemain = Math.max(stormRemain, duration || 0); return; }
     stormTarget = 1;
-    stormRemain = duration || G.rand(60, 120);
+    const kind = stormKindFor(Number.isFinite(power) ? power : pickStormPower());
+    world.stormPower = kind.power;
+    world.stormName = kind.name;
+    stormRemain = duration || (kind.power > 1.2 ? G.rand(70, 110) : G.rand(60, 120));
+    bigWaveT = G.rand(10, 16);
+    bigWavePending = -1;
+    crackNotified = false;
     lightningT = G.rand(5, 10);
     stormHitT = G.rand(3, 6);           // counts down only while storm > 0.65: first wave soon after the peak
     stormSpill = G.chance(0.2);
-    G.events.emit('world:storm', { active: true });
+    G.events.emit('world:storm', { active: true, power: world.stormPower, name: world.stormName, text: kind.banner });
   }
   function endStorm() {
     if (stormTarget === 0) return;
     stormTarget = 0;
     stormCalm = G.rand(200, 420);
+    bigWavePending = -1;
     G.events.emit('world:storm', { active: false });
   }
 
@@ -1644,7 +1674,8 @@
     const st = world.storm;
     U.uStorm.value = st;
     let sum = 0;
-    for (let i = 0; i < NW; i++) { wA[i] = wA0[i] * (1 + st * wGain[i]); sum += wA[i]; }
+    const sp = st * world.stormPower;
+    for (let i = 0; i < NW; i++) { wA[i] = wA0[i] * (1 + sp * wGain[i]); sum += wA[i]; }
     if (!oceanMat) return;
     const u = oceanMat.uniforms;
     const w = u.uWave.value;
@@ -1666,6 +1697,8 @@
     u.uShallowCol.value.setRGB(0.13, 0.72, 0.66).multiplyScalar(0.12 + 0.88 * world.lightLevel);
     const deck = G.raft && typeof G.raft.deckY === 'function' ? G.raft.deckY() : 0.35;
     u.uDeckY.value = Number.isFinite(deck) ? deck : 0.35;
+    const tx = G.raft && Number.isFinite(G.raft.tiltX) ? G.raft.tiltX : 0, tz = G.raft && Number.isFinite(G.raft.tiltZ) ? G.raft.tiltZ : 0;
+    u.uTilt.value.set(tx, tz);
   }
 
   // =============================================================================================
@@ -1707,9 +1740,10 @@
     });
 
     G.debug.setTime = (f) => { setDayFraction(Number(f) || 0); updateSky(); };
-    G.debug.storm = (on) => {
+    G.debug.bigWave = () => { warnBigWave(); return true; };
+    G.debug.storm = (on, power) => {
       if (on === undefined || on === true || (typeof on === 'number' && on > 0)) {
-        startStorm(120);
+        startStorm(120, Number.isFinite(power) ? power : 1);
         world.storm = typeof on === 'number' ? clamp(on, 0, 1) : 1;
       } else {
         endStorm();
@@ -1743,6 +1777,11 @@
     lightningT = 8;
     stormHitT = 6;
     stormSpill = false;
+    world.stormPower = 1;
+    world.stormName = '';
+    bigWavePending = -1;
+    bigWaveT = 15;
+    crackNotified = false;
     thunderT = -1;
     flash = 0;
     flashAge = 10;
@@ -1767,6 +1806,7 @@
         level: Math.round(world.storm * 1000) / 1000,
         target: stormTarget,
         remain: Math.round(stormRemain),
+        power: world.stormPower,
         calm: Math.round(stormCalm),
       },
     };
@@ -1786,6 +1826,7 @@
     stormTarget = num(s.target, 0) > 0 ? 1 : 0;
     world.storm = clamp(num(s.level, 0), 0, 1);
     stormRemain = num(s.remain, stormTarget ? 60 : 0);
+    { const k = stormKindFor(num(s.power, 1)); world.stormPower = k.power; world.stormName = stormTarget ? k.name : ''; }
     stormCalm = num(s.calm, G.rand(60, 260));
     updateDrift();
     if (oceanMat) { updateWaveUniforms(); updateSky(); }
@@ -1830,7 +1871,7 @@
     const rate = stormTarget > world.storm ? 1 / 14 : 1 / 18;
     world.storm = stormTarget > world.storm ? Math.min(stormTarget, world.storm + rate * dt) : Math.max(stormTarget, world.storm - rate * dt);
 
-    if (world.storm > 0.45) {
+    if (world.storm > 0.45 && world.stormPower >= 0.9) {
       lightningT -= dt;
       if (lightningT <= 0) { lightningT = G.rand(5, 13) / (0.5 + world.storm * 0.5); strikeLightning(); }
     }
@@ -1839,22 +1880,65 @@
       if (thunderT < 0) G.sfx('thunder', { volume: thunderVol });
     }
     // big storm waves batter the raft edges (raft.js keeps the last tile at >= 1 hp)
-    if (world.storm > 0.65 && G.raft && typeof G.raft.randomEdgeTile === 'function' && typeof G.raft.damageTile === 'function') {
+    const strength = world.storm * world.stormPower;
+    if (strength > 0.55 && G.raft && typeof G.raft.randomEdgeTile === 'function' && typeof G.raft.damageTile === 'function') {
       stormHitT -= dt;
       if (stormHitT <= 0) {
-        stormHitT = G.rand(8, 14);
-        const tile = G.raft.randomEdgeTile();
+        stormHitT = G.rand(8, 14) / world.stormPower;
+        // stronger storms go for the wooden (not yet reinforced) tiles anywhere on the raft
+        let tile = null;
+        if (world.stormPower >= 1 && G.chance(0.7) && G.raft.tiles) {
+          const wood = [];
+          G.raft.tiles.forEach((t) => { if (t && !t.reinforced) wood.push(t); });
+          if (wood.length) {
+            tile = G.pick(wood);
+            if (!crackNotified) { crackNotified = true; G.notify('Bouře láme nezpevněné díly! Zpevni je kladivem.', 'warn'); }
+          }
+        }
+        if (!tile) tile = G.raft.randomEdgeTile();
         if (tile) {
           if (typeof G.raft.tileCenter === 'function') {
             G.raft.tileCenter(tile, _v2);
             fx.splash(_v2, 2.4);
             G.sfx('splash_big', { position: _v2 });
           }
-          G.raft.damageTile(tile, G.randInt(8, 14), 'storm');
+          G.raft.damageTile(tile, Math.round(G.randInt(8, 14) * world.stormPower), 'storm');
         }
         if (stormSpill && spillFromNet()) stormSpill = false;
       }
     }
+    // strong storms: a big wave now and then sweeps the deck (warning first)
+    if (strength > 1.05) {
+      if (bigWavePending < 0) {
+        bigWaveT -= dt;
+        if (bigWaveT <= 0) warnBigWave();
+      }
+    }
+    if (bigWavePending >= 0) {
+      bigWavePending -= dt;
+      if (bigWavePending < 0) hitBigWave();
+    }
+  }
+
+  function warnBigWave() {
+    bigWavePending = 1.6;
+    bigWaveT = G.rand(12, 20);
+    G.events.emit('world:bigwave', { warn: true });
+    if (G.ui && typeof G.ui.banner === 'function') G.ui.banner('Velká vlna! Drž se dál od okraje!', 'danger', 2);
+    G.sfx('warning', { volume: 0.6 });
+  }
+  // The wave rolls over the raft along the wind: player.js pushes the player, raft.js heaves.
+  function hitBigWave() {
+    bigWavePending = -1;
+    const w = world.windDir;
+    const R = G.raft;
+    const rad = R && typeof R.radius === 'function' ? R.radius() : 4;
+    _v2.set(-w.x * (rad + 1), 0.4, -w.z * (rad + 1));
+    fx.splash(_v2, 3.2);
+    _v2.set(0, 0.6, 0);
+    fx.splash(_v2, 1.6);
+    G.sfx('splash_big', { volume: 1 });
+    G.events.emit('world:bigwave', { warn: false, dir: { x: w.x, z: w.z }, power: world.stormPower });
   }
 
   // A big wave washes one stack out of a net; it floats away downstream (it can be hooked back).

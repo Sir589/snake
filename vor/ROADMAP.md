@@ -19,8 +19,11 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    Testy: `tools/scenarios/lookout.mjs`, `tools/scenarios/hold.mjs`.
 4. ✅ **HOTOVO – Vylepšení podvozku voru**: úrovně dílů (dřevo → zpevněné → kovové), vor větší než 24×24.
    *Hotovo:* kladivem na zpevněný díl → „Okovat základ“ (4× kov, 1× prkno): 250 HP, žralok ho neukousne, dělo bere
-   jen 35 %, bouře polovinu. Vor může mít až 32 × 32 dílů (voda pod palubou i stíny to zvládají). Test: `tools/scenarios/tiers.mjs`.
-5. **Bouře různé síly**: silná bouře houpe celým vorem, nevylepšené díly praskají, hráč může vypadnout.
+   jen 35 %, bouře 30 %. Vor může mít až 32 × 32 dílů (voda pod palubou i stíny to zvládají). Test: `tools/scenarios/tiers.mjs`.
+5. ✅ **HOTOVO – Bouře různé síly**: silná bouře houpe celým vorem, nevylepšené díly praskají, hráč může vypadnout.
+   *Hotovo:* Přeháňka / Bouře / Silná bouře (s dny přibývá silných), vlny podle síly, vor se ve vlnách naklání,
+   bouře láme hlavně nezpevněné díly (zpevněné berou 60 %, kovové 30 %), v silné bouři chodí velké vlny s varováním –
+   kdo stojí u okraje, spadne do moře; zeď nebo zábradlí ho udrží. Test: `tools/scenarios/storms.mjs`.
 6. **Potápění**: plavání pod hladinu, pěkné dno (korály, ryby, poklady), dech.
 7. **Ostrovy**: každý jiný – velikost, tvar, druhy stromů, skály, jeskyně.
 8. **Zvířata na voru**: kráva, slepice, ovce, koza, prase (krmení, produkty) a papoušek, kterého jde pojmenovat.

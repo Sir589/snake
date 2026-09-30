@@ -30,7 +30,7 @@ export default async (page, h) => {
   ok(r.metalFirst === false, 'metal plating needs a reinforced tile first');
   ok(JSON.stringify(r.reinforced) === '[1,150,150]', 'reinforced: 150 hp');
   ok(r.metal && JSON.stringify(r.lvl2) === '[2,250,250,true]', 'metal: 250 hp ' + JSON.stringify(r.lvl2));
-  ok(r.shark === 0 && r.cannon === 35 && r.storm === 10, 'metal takes no shark bites, 35 % cannon, half storm (' + [r.shark, r.cannon, r.storm] + ')');
+  ok(r.shark === 0 && r.cannon === 35 && r.storm === 6, 'metal takes no shark bites, 35 % cannon, 30 % storm (' + [r.shark, r.cannon, r.storm] + ')');
 
   // --- with the hammer (real input) ----------------------------------------------------------------------
   await h.eval(() => {

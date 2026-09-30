@@ -86,6 +86,8 @@
 
   const deckBase = () => (G.raft && G.raft.deckY ? G.raft.deckY() : G.C.DECK_Y);
   const localBase = () => G.C.DECK_Y;
+  // deck top at a raft point (follows the raft's tilt in storms)
+  const deckAt = (x, z) => (G.raft && G.raft.deckYAt ? G.raft.deckYAt(x, z) : deckBase());
 
   // ---------------------------------------------------------------------------
   // Shapes: solid height at a point (px,pz in cell-local metres 0..1)
@@ -112,7 +114,7 @@
   // Highest standable block surface under (x, z) that is <= maxY (world Y).
   function heightAt(x, z, maxY) {
     if (!B.blocks.size && !B.pieces.size) return null;
-    const base = deckBase();
+    const base = deckAt(x, z);
     const lim = maxY === undefined ? Infinity : maxY;
     let best = null;
     const col = cols.get(colk(Math.floor(x), Math.floor(z)));
@@ -139,7 +141,7 @@
   const OFFS = [[0, 0], [1, 1], [1, -1], [-1, 1], [-1, -1], [1, 0], [-1, 0], [0, 1], [0, -1]];
   function blocked(x, z, yLow, yHigh, r) {
     if (!B.blocks.size && !B.pieces.size) return false;
-    const base = deckBase();
+    const base = deckAt(x, z);
     r = r === undefined ? 0.3 : r;
     for (let k = 0; k < OFFS.length; k++) {
       const sx = x + OFFS[k][0] * r, sz = z + OFFS[k][1] * r;

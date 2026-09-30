@@ -537,6 +537,15 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Storm strength (ROADMAP 5).** `G.world.stormPower` 0.6 / 1 / 1.5 and `stormName` (Přeháňka / Bouře / Silná bouře)
+  are picked when a storm starts (stronger ones later in the game); `stormStrength()` = storm × power scales the
+  waves, storm hits (70 % go for wooden tiles; reinforced ×0.6, metal ×0.3) and lightning (power ≥ 0.9 only).
+  `world:storm {active, power, name, text}`. Above strength 1.05 big waves come every 12–20 s: `world:bigwave
+  {warn: true}` + banner, 1.6 s later `{warn: false, dir, power}` → player.js `G.player.push(vx, vz, dur)` shoves the
+  player downwind (walls stop it; the edge does not), raft.js heaves and hits the most upwind wooden tile.
+  In storms the raft group tilts with the waves (`G.raft.tiltX/tiltZ` = deck slope, ≤ 0.35 m at the far edge);
+  `G.raft.deckYAt(x, z)` gives the deck height at a point (ground providers and build.js use it; the ocean shader
+  gets `uTilt`). Debug: `G.debug.storm(on, power)`, `G.debug.bigWave()`. This relaxes §2 "the raft never rotates".
 - **Tile levels & big rafts (ROADMAP 4).** `tile.level` 0 wood (100 hp), 1 reinforced (150, `tile.reinforced` stays true
   from level 1), 2 metal (250; no shark damage, cannon ×0.35, storm ×0.5). Hammer aim kinds add `metal`
   (`G.raft.plate(tile)`, cost `COST.metal`). `MAX_SPAN` 32 and tiles stay within i, j ∈ [-32, 31]; world.js keeps a

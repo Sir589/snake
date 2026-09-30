@@ -778,10 +778,11 @@
     if (t.level >= 2) {
       if (source === 'shark') return 0;
       if (source === 'cannon') amount *= 0.35;
-      if (source === 'storm') amount *= 0.5;
+      if (source === 'storm') amount *= 0.3;
     } else if (t.reinforced) {
       if (source === 'shark') return 0;
       if (source === 'cannon') amount *= 0.5;
+      if (source === 'storm') amount *= 0.6;
     }
     if (source === 'storm' && !stormInternal) extStormHitAt = G.time;
     const before = t.hp;
@@ -3262,6 +3263,10 @@
     removeHold,
     // --- contract ---
     deckY() { return group.position.y + G.C.DECK_Y; },
+    // Deck height at a raft point: equals deckY() in calm weather, follows the tilt in storms.
+    deckYAt(x, z) { return group.position.y + G.C.DECK_Y + x * raft.tiltX + z * raft.tiltZ; },
+    tiltX: 0,
+    tiltZ: 0,
     tileAt(x, z) { return grid.get(nkey(Math.floor(x / TILE), Math.floor(z / TILE))) || null; },
     tileCenter,
     count() { return tiles.size; },
@@ -3326,8 +3331,30 @@
       target = sum / 6;
       if (!Number.isFinite(target)) target = 0;
     }
+    // a big wave lifts the raft for a moment
+    if (heave > 0) { target += Math.sin(Math.min(1, heave) * PI) * 0.45 * heavePower; heave = Math.max(0, heave - dt * 0.9); }
     group.position.y = dt > 0 ? G.damp(group.position.y, target, 3, dt) : target;
+    // storms rock the whole raft with the waves under it (ROADMAP 5). The tilt is kept small enough
+    // that the far edges move at most ~0.35 m, and is zero in calm weather.
+    let sx = 0, sz = 0;
+    const strength = W && typeof W.stormStrength === 'function' ? W.stormStrength() : 0;
+    if (strength > 0.2 && tiles.size) {
+      const x0 = cache.minI * TILE, x1 = (cache.maxI + 1) * TILE, z0 = cache.minJ * TILE, z1 = (cache.maxJ + 1) * TILE;
+      const cx = (x0 + x1) * 0.5, cz = (z0 + z1) * 0.5;
+      const k = Math.min(1, (strength - 0.2) / 0.9) * 1.4;
+      sx = (W.waveHeight(x1, cz) - W.waveHeight(x0, cz)) / Math.max(2, x1 - x0) * k;
+      sz = (W.waveHeight(cx, z1) - W.waveHeight(cx, z0)) / Math.max(2, z1 - z0) * k;
+      const lim = Math.min(0.09, 0.35 / Math.max(2, cache.radius));
+      sx = G.clamp(sx, -lim, lim); sz = G.clamp(sz, -lim, lim);
+    }
+    raft.tiltX = dt > 0 ? G.damp(raft.tiltX, sx, 2, dt) : sx;
+    raft.tiltZ = dt > 0 ? G.damp(raft.tiltZ, sz, 2, dt) : sz;
+    if (Math.abs(raft.tiltX) < 1e-5 && sx === 0) raft.tiltX = 0;
+    if (Math.abs(raft.tiltZ) < 1e-5 && sz === 0) raft.tiltZ = 0;
+    // +x side up by tiltX per metre: rotation about z; +z side up by tiltZ: rotation about -x
+    group.rotation.set(-Math.atan(raft.tiltZ), 0, Math.atan(raft.tiltX));
   }
+  let heave = 0, heavePower = 1;
 
   function animTiles(dt) {
     for (const t of tiles.values()) {
@@ -3450,9 +3477,24 @@
       // walkable deck over every tile
       G.ground.add({
         kind: 'raft',
-        heightAt(x, z) { return grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE))) ? raft.deckY() : null; },
+        heightAt(x, z) { return grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE))) ? raft.deckYAt(x, z) : null; },
       });
       group.add(holdGroup);
+      // a big storm wave lifts the raft and hits a wooden tile on the side it comes from
+      G.events.on('world:bigwave', (e) => {
+        if (!e || e.warn) return;
+        heave = 1;
+        heavePower = Number(e.power) || 1;
+        const d = e.dir || { x: 1, z: 0 };
+        let best = null, bs = Infinity;
+        for (const t of tiles.values()) {
+          if (t.reinforced) continue;
+          const sc = ((t.i + 0.5) * d.x + (t.j + 0.5) * d.z);      // most upwind = smallest
+          if (sc < bs) { bs = sc; best = t; }
+        }
+        if (best) damageTile(best, Math.round(12 * heavePower), 'storm');
+        for (const t of tiles.values()) { t.shake = 0.45; t.animating = true; }
+      });
       // a warm lantern light that goes on when the player climbs down into a hold
       holdLight = new THREE.PointLight(0xffc98a, 0, 9, 1.4);
       holdLight.position.set(0.2, 0.3, 0.1);
@@ -3460,7 +3502,7 @@
       // floors of below-deck holds
       G.ground.add({
         kind: 'hold',
-        heightAt(x, z) { return holdAt(x, z) ? raft.deckY() + HOLD_FLOOR : null; },
+        heightAt(x, z) { return holdAt(x, z) ? raft.deckYAt(x, z) + HOLD_FLOOR : null; },
       });
       // crow's nests on masts
       G.ground.add({
@@ -3495,6 +3537,9 @@
         if (w && (w.x || w.z)) velocity.set(w.x, 0, w.z).normalize().multiplyScalar(speed);
         else velocity.set(speed, 0, 0);
         group.position.y = 0;
+        group.rotation.set(0, 0, 0);
+        raft.tiltX = raft.tiltZ = 0;
+        heave = 0;
         stormTimer = 12;
         extStormHitAt = -1e9;
         stormNotifyAt = -1e9;

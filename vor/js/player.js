@@ -65,6 +65,8 @@
     god: false,
     lastDamageSource: null,
     zoom: 1,                  // camera magnification (the telescope sets it; 1 = normal view)
+    // shove the player horizontally (m/s) for a moment; walls stop it like walking
+    push(vx, vz, dur) { push.set(Number(vx) || 0, 0, Number(vz) || 0); pushT = Math.max(0, Number(dur) || 0.5); shake = Math.max(shake, 0.6); },
     controlOverride: null,
     hand: new THREE.Group(),     // parented to the camera in init(); held view models live here
 
@@ -156,6 +158,8 @@
     const g = sampleGround(x, z, Infinity, skipRaft, true);
     return !!g && g.h > limitY;
   }
+  const push = new THREE.Vector3();
+  let pushT = 0;
   // Below deck (a hold built under the raft, see raft.js): the hull walls bound the room.
   function inHoldAt(x, y, z) { const R = G.raft; return !!(R && R.inHold && R.inHold(x, y + 0.9, z)); }
   function holdWall(x, z) {
@@ -475,6 +479,12 @@
     // horizontal move; terrain higher than a step blocks (slide along the other axis)
     const ox = pos.x, oz = pos.z, prevY = pos.y;
     let nx = ox + vel.x * dt, nz = oz + vel.z * dt;
+    // an outside shove (a big storm wave) on top of walking; walls and fences still stop it
+    if (pushT > 0) {
+      const k = Math.min(1, pushT / 0.35);
+      nx += push.x * k * dt; nz += push.z * k * dt;
+      pushT -= dt;
+    }
     const lim = prevY + STEP_UP, head = prevY + 1.8;
     // if we are already stuck inside a block (e.g. just climbed onto it), let us walk out
     const stuck = blockWall(ox, oz, lim, head);
@@ -1566,6 +1576,7 @@
     deathT = 0; diedInWater = false;
     fovCur = baseFov;
     P.zoom = 1;
+    pushT = 0;
     const cam = G.camera;
     if (cam && Math.abs(cam.fov - baseFov) > 0.01) { cam.fov = baseFov; cam.updateProjectionMatrix(); }
     P.hand.visible = false;
@@ -1592,6 +1603,14 @@
       G.tools.register('cup', cup);
       G.tools.register('spear', spear);
       G.events.on('ui:blocking', (on) => { if (on) releaseButtons(); });
+      // a big storm wave sweeps over the deck: it shoves whoever stands on the raft downwind
+      G.events.on('world:bigwave', (e) => {
+        if (!e || e.warn || !P.alive || P.inWater || !P.onGround || P.controlOverride) return;
+        const k = P.groundKind;
+        if (k !== 'raft' && k !== 'blocks') return;
+        const d = e.dir || { x: 1, z: 0 }, s = 5.2 * Math.min(1.3, Number(e.power) || 1);
+        P.push(d.x * s, d.z * s, 0.75);
+      });
       G.events.on('game:paused', () => releaseButtons());
       G.events.on('game:menu', () => { releaseButtons(); unequip(); P.hand.visible = false; });
       G.events.on('game:over', () => { releaseButtons(); unequip(); P.hand.visible = false; });
