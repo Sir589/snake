@@ -10,8 +10,13 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
 2. ✅ **HOTOVO – Jemnější stavění**: vedle 1m bloků i prkna, trámy a sloupy s polovičním/čtvrtinovým krokem mřížky.
    *Hotovo:* v nabídce kladiva jsou Prkénko, Trám, Sloup a Půlblok; mřížka 25 cm, klávesa G přepne na 50 cm, R otáčí.
    Dá se po nich chodit, stavět na ně vybavení, ukládají se. Test: `tools/scenarios/fine.mjs`.
-3. **Lepší plachta** přes celý vor (větší rychlost), **stožár, dalekohled** (přiblížení kamery), **postel**
+3. ✅ **HOTOVO – Lepší plachta** přes celý vor (větší rychlost), **stožár, dalekohled** (přiblížení kamery), **postel**
    (přespat noc), **podpalubí** (bloky pod úrovní paluby).
+   *Hotovo:* Velká plachta (roztáhne se přes vor, 3,5 m/s místo 2,2), Stožár s košem (E = vylézt / slézt),
+   Dalekohled (podrž levé tl., pravé = 4× / 8×, ukáže název a vzdálenost ostrova nebo lodi), Postel (v noci E = spát do rána),
+   Podpalubí: kladivem → Podpalubí pod díl voru, vstup Poklopem; uvnitř sucho, stěny, strop, lucerna, dá se tam
+   postavit vybavení (truhly…). Bloky se pod palubu zatím stavět nedají – místo nich je celé podpalubí pod dílem.
+   Testy: `tools/scenarios/lookout.mjs`, `tools/scenarios/hold.mjs`.
 4. **Vylepšení podvozku voru**: úrovně dílů (dřevo → zpevněné → kovové), vor větší než 24×24.
 5. **Bouře různé síly**: silná bouře houpe celým vorem, nevylepšené díly praskají, hráč může vypadnout.
 6. **Potápění**: plavání pod hladinu, pěkné dno (korály, ryby, poklady), dech.

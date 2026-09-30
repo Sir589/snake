@@ -74,6 +74,8 @@
     { tool: 'rod', maxDur: 30, g: 'f' });
   D('ostep', 'Oštěp', '🔱', 1, 'weapon', '#bdb6a2', 'Ostrý oštěp. Obrana proti žralokovi i pirátům.',
     { tool: 'spear', maxDur: 60, g: 'm' });
+  D('dalekohled', 'Dalekohled', '🔭', 1, 'tool', '#c9a24a', 'Podrž levé tlačítko a přibliž si obzor. Najdeš ostrovy i piráty.',
+    { tool: 'telescope' });
 
   // Placeables (built on a raft tile with the 'place' tool)
   D('cisticka', 'Čistička vody', '⚗️', 5, 'placeable', '#5a9fb5', 'Postav ji na vor. Udělá z mořské vody pitnou.',
@@ -92,6 +94,14 @@
     { tool: 'place', place: 'cannon' });
   D('vlajka', 'Vlajka', '🚩', 1, 'placeable', '#0f5e6e', 'Ozdoba voru za pirátské zlaťáky. Vlaje ve větru.',
     { tool: 'place', place: 'flag' });
+  D('plachta_velka', 'Velká plachta', '🏳️', 1, 'placeable', '#f4ecd8', 'Obří plachta přes celý vor. Pluješ s ní skoro dvakrát rychleji.',
+    { tool: 'place', place: 'bigsail' });
+  D('stozar', 'Stožár', '🗼', 1, 'placeable', '#8a6238', 'Vysoký stožár s košem nahoře. Vylez na něj a rozhlédni se.',
+    { tool: 'place', place: 'mast' });
+  D('postel', 'Postel', '🛏️', 2, 'placeable', '#b0724a', 'V noci se na ní vyspíš až do rána a načerpáš síly.',
+    { tool: 'place', place: 'bed' });
+  D('poklop', 'Poklop', '🕳️', 2, 'placeable', '#7a5634', 'Dvířka v palubě. Vedou dolů do podpalubí, které si postavíš z bloků.',
+    { tool: 'place', place: 'hatch' });
   D('koule', 'Dělová koule', '⚫', 20, 'ammo', '#2c2c30', 'Náboj do kanónu. Bum!');
 
   const COOK = Object.create(null), PURIFY = Object.create(null);
@@ -121,6 +131,11 @@
     R('plachta', 'plachta', 1, { prkno: 8, provaz: 6, plast: 6 }, 'Vor'),
     R('kotva', 'kotva', 1, { kov: 4, provaz: 4, kamen: 2 }, 'Vor'),
     R('vlajka', 'vlajka', 1, { zlato: 15, provaz: 2, prkno: 2 }, 'Vor'),
+    R('plachta_velka', 'plachta_velka', 1, { plachta: 1, prkno: 10, provaz: 8, plast: 8 }, 'Vor'),
+    R('stozar', 'stozar', 1, { prkno: 12, provaz: 6, kov: 2 }, 'Vor'),
+    R('postel', 'postel', 1, { prkno: 10, list: 8, provaz: 2 }, 'Vor'),
+    R('poklop', 'poklop', 1, { prkno: 4, provaz: 2, kov: 1 }, 'Vor'),
+    R('dalekohled', 'dalekohled', 1, { kov: 2, plast: 3, provaz: 1 }, 'Nástroje'),
     R('kanon', 'kanon', 1, { kov: 8, prkno: 6, provaz: 2 }, 'Zbraně'),
     R('koule_kov', 'koule', 3, { kov: 2 }, 'Zbraně', 'Dělové koule (z kovu)'),
     R('koule_kamen', 'koule', 3, { kov: 1, kamen: 2 }, 'Zbraně', 'Dělové koule (z kamene)'),

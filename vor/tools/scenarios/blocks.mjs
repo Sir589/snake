@@ -10,7 +10,7 @@ export default async (page, h) => {
   await h.eval(() => { G.debug.giveAll(); G.inventory.select(G.inventory.firstIndexOf('kladivo')); });
   await frames(3);
   // look down at the deck in front and place a wooden block
-  await h.eval(() => { G.debug.teleport(-1.5, 0.5); G.player.yaw = -Math.PI / 2; G.player.pitch = -0.7; G.build.selected = 1; });
+  await h.eval(() => { G.debug.teleport(-1.5, 0.5); G.player.yaw = -Math.PI / 2; G.player.pitch = -0.7; G.build.selected = G.build.types.findIndex((t) => t.id === 'blok'); });
   await frames(3);
   const before = await h.eval(() => ({ n: G.build.blocks.size, p: G.inventory.count('prkno') }));
   await click('left');

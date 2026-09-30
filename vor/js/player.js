@@ -64,6 +64,7 @@
     climbing: false,             // climbing from the sea onto the raft
     god: false,
     lastDamageSource: null,
+    zoom: 1,                  // camera magnification (the telescope sets it; 1 = normal view)
     controlOverride: null,
     hand: new THREE.Group(),     // parented to the camera in init(); held view models live here
 
@@ -154,6 +155,12 @@
   function wallAt(x, z, limitY, skipRaft) {
     const g = sampleGround(x, z, Infinity, skipRaft, true);
     return !!g && g.h > limitY;
+  }
+  // Below deck (a hold built under the raft, see raft.js): the hull walls bound the room.
+  function inHoldAt(x, y, z) { const R = G.raft; return !!(R && R.inHold && R.inHold(x, y + 0.9, z)); }
+  function holdWall(x, z) {
+    const R = G.raft;
+    return !(R.holdAt(x + RAD, z + RAD) && R.holdAt(x - RAD, z + RAD) && R.holdAt(x + RAD, z - RAD) && R.holdAt(x - RAD, z - RAD));
   }
   // Built blocks (build.js) between the step height and the top of the head.
   function blockWall(x, z, limitY, headY) {
@@ -471,14 +478,15 @@
     const lim = prevY + STEP_UP, head = prevY + 1.8;
     // if we are already stuck inside a block (e.g. just climbed onto it), let us walk out
     const stuck = blockWall(ox, oz, lim, head);
-    const hit = (x, z) => wallAt(x, z, lim, false) || (!stuck && blockWall(x, z, lim, head));
+    const hold = inHoldAt(ox, prevY, oz);
+    const hit = hold ? holdWall : (x, z) => wallAt(x, z, lim, false) || (!stuck && blockWall(x, z, lim, head));
     if (hit(nx, nz)) {
       if (!hit(nx, oz)) { nz = oz; vel.z = 0; }
       else if (!hit(ox, nz)) { nx = ox; vel.x = 0; }
       else { nx = ox; nz = oz; vel.x = 0; vel.z = 0; }
     }
     pos.x = nx; pos.z = nz;
-    if (pos.y < deckY() - STEP_UP && pushOutOfRaft()) {
+    if (!hold && pos.y < deckY() - STEP_UP && pushOutOfRaft()) {
       // somehow inside the raft body: put back on the deck
       pos.y = deckY();
       vel.y = 0;
@@ -487,6 +495,7 @@
     // vertical + ground (a block overhead stops a jump)
     pos.y += vel.y * dt;
     if (vel.y > 0 && blockWall(pos.x, pos.z, pos.y + 1.45, pos.y + 1.85)) { pos.y = prevY; vel.y = 0; }
+    if (hold && vel.y > 0 && pos.y + 1.85 > deckY() + G.raft.HOLD_CEIL) { pos.y = Math.min(prevY, deckY() + G.raft.HOLD_CEIL - 1.85); vel.y = 0; }
     const wasOn = P.onGround;
     const g = sampleGround(pos.x, pos.z, Math.max(prevY, pos.y) + STEP_UP, false);
     const gh = g ? g.h : -Infinity, gp = g ? g.p : null;
@@ -509,8 +518,8 @@
     const surf = waveH(pos.x, pos.z);
     const depth = surf - pos.y;
     if (P.onGround) {
-      if (depth > WADE + 0.12 && gp && gp.kind !== 'raft') enterWater(vel.y);
-    } else if (depth > 0.08 && (!gp || gh < surf - WADE)) {
+      if (depth > WADE + 0.12 && gp && gp.kind !== 'raft' && gp.kind !== 'hold') enterWater(vel.y);
+    } else if (!hold && depth > 0.08 && (!gp || gh < surf - WADE)) {
       enterWater(vel.y);
     }
   }
@@ -659,8 +668,10 @@
       P.yaw + shx * 0.5,
       rollS + hurtRoll + Math.sin(bobPhase) * 0.008 * bobAmp);
 
-    const fovT = baseFov + (P.sprinting && hs > WALK + 0.2 ? 6 : 0);
-    fovCur = damp(fovCur, fovT, 5, dt);
+    const zoom = Math.max(1, P.zoom || 1);
+    const fovT = zoom > 1 ? 2 * Math.atan(Math.tan(baseFov * Math.PI / 360) / zoom) * 180 / Math.PI
+      : baseFov + (P.sprinting && hs > WALK + 0.2 ? 6 : 0);
+    fovCur = damp(fovCur, fovT, zoom > 1 || fovCur < baseFov - 1 ? 9 : 5, dt);
     if (Math.abs(cam.fov - fovCur) > 0.01) { cam.fov = fovCur; cam.updateProjectionMatrix(); }
   }
 
@@ -905,7 +916,7 @@
     // look
     lookDX = lookDY = 0;
     if (!ov && inp.looking()) {
-      const k = LOOK_K * (Number(G.settings.sensitivity) || 1);
+      const k = LOOK_K * (Number(G.settings.sensitivity) || 1) / Math.max(1, P.zoom || 1);
       lookDX = inp.mouse.dx; lookDY = inp.mouse.dy;
       P.yaw -= lookDX * k;
       P.pitch -= lookDY * k * (G.settings.invertY ? -1 : 1);
@@ -1554,6 +1565,7 @@
     starveH = starveT = 0;
     deathT = 0; diedInWater = false;
     fovCur = baseFov;
+    P.zoom = 1;
     const cam = G.camera;
     if (cam && Math.abs(cam.fov - baseFov) > 0.01) { cam.fov = baseFov; cam.updateProjectionMatrix(); }
     P.hand.visible = false;

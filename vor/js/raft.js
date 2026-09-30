@@ -19,6 +19,12 @@
     repair: { prkno: 1 },
   };
   const SPEED_DRIFT = 0.35, SPEED_SAIL = 2.2;
+  const BIG_SAIL_POWER = 1.6;                   // the big sail: 2.2 → 3.5 m/s
+  const NEST_Y = 5;                             // crow's nest floor above the deck
+  // Below-deck hold (podpalubí) under a tile: a dry room from HOLD_FLOOR up to the deck's underside.
+  const HOLD_FLOOR = -2.4, HOLD_CEIL = -0.35, HOLD_WALL = 0.12;
+  const HOLD_COST = { prkno: 6, plast: 2, kov: 1 };
+  const NEST_R = 0.8;
   const BUILD_RANGE = 6, PLACE_RANGE = 5.5, DISMANTLE_RANGE = 4.5;
   const DISMANTLE_TIME = 0.6;
   const SWING_TIME = 0.42, SWING_IMPACT = 0.2;
@@ -696,6 +702,8 @@
   }
 
   function removeTileInternal(t) {
+    if (t.hold || t.holdMesh) { t.hold = false; if (t.holdMesh) { holdGroup.remove(t.holdMesh); t.holdMesh = null; } }
+    holdsDirty = true;
     for (let k = structures.length - 1; k >= 0; k--) if (structures[k] && structures[k].tile === t) removeStructure(structures[k], false);
     bucketRemove(t);
     t.animating = false;
@@ -890,12 +898,18 @@
     anchor: { r: [-0.5, 0.66, -0.25, 1.1], h: 0.8, sup: [-0.5, 0.66, -0.25, 0.7], deckOnly: true },
     flag: { r: [-0.2, 0.2, -0.2, 0.2], h: 2.4 },
     cannon: { r: [-0.7, 0.7, -0.7, 0.7], h: 0.9 },
+    bigsail: { r: [-0.45, 0.45, -0.45, 0.45], h: 7.2 },
+    mast: { r: [-0.35, 0.35, -0.35, 0.35], h: 6.4 },
+    bed: { r: [-0.55, 0.55, -1.08, 1.08], h: 0.75 },
+    hatch: { r: [-0.5, 0.5, -0.5, 0.5], h: 0.12, deckOnly: true },
   };
   const FIT_TEXT = {
     deck: 'Tohle patří přímo na palubu voru, ne na blok.',
     wall: 'Nevejde se to – vadí tu stěna nebo blok.',
     taken: 'Tady už něco stojí.',
     floor: 'Tady to nestojí rovně. Potřebuje to pevnou podlahu.',
+    hold: 'Poklop patří nad podpalubí. Nejdřív ho postav kladivem (položka Podpalubí).',
+    tall: 'Tohle se do podpalubí nevejde.',
   };
   const footCache = Object.create(null);
   const _oA = {}, _oB = {}, _oBox = { x: 0, z: 0, ax: 1, az: 0, bx: 0, bz: 1, hx: 0.5, hz: 0.5, y0: 0, y1: 1 };
@@ -994,7 +1008,8 @@
   // Highest floor (deck or block top) at x/z that is not above maxY; deck-relative, -Infinity if none.
   function surfaceAt(x, z, maxY) {
     let best = -Infinity;
-    if (maxY >= 0 && grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE)))) best = 0;
+    const t = grid.get(nkey(Math.floor(x / TILE), Math.floor(z / TILE)));
+    if (t) { if (maxY >= 0) best = 0; else if (t.hold && maxY >= HOLD_FLOOR) best = HOLD_FLOOR; }
     const Bd = G.build;
     if (Bd && ((Bd.blocks && Bd.blocks.size) || (Bd.pieces && Bd.pieces.size)) && typeof Bd.heightAt === 'function') {
       const base = raft.deckY();
@@ -1002,6 +1017,18 @@
       if (h !== null && h - base > best) best = h - base;
     }
     return best;
+  }
+  // Every corner and edge midpoint of the footprint satisfies test(x, z).
+  function rectOver(type, x, z, angle, test) {
+    const r = footprint(type).r;
+    for (let a = 0; a < 3; a++) {
+      for (let b = 0; b < 3; b++) {
+        if (a === 1 && b === 1) continue;
+        localToRaft(x, z, angle, r[0] + (r[1] - r[0]) * a / 2, r[2] + (r[3] - r[2]) * b / 2, _pt);
+        if (!test(_pt.x, _pt.z)) return false;
+      }
+    }
+    return true;
   }
   function localToRaft(x, z, angle, lx, lz, out) {
     const c = Math.cos(angle), s = Math.sin(angle);
@@ -1025,7 +1052,12 @@
   // '' when the structure fits there, else a FIT_TEXT key.
   function fitReason(type, x, y, z, angle, ignore) {
     const f = footprint(type);
-    if (f.deckOnly && y > 0.05) return 'deck';
+    if (f.deckOnly && Math.abs(y) > 0.05) return 'deck';
+    if (type === 'hatch' && !rectOver(type, x, z, angle, (px, pz) => !!holdAt(px, pz))) return 'hold';
+    if (y < -0.5) {
+      if (y + f.h > HOLD_CEIL + 0.02) return 'tall';
+      if (!rectOver(type, x, z, angle, holdInterior)) return 'wall';
+    }
     obbOf(type, x, y, z, angle, null, _oA);
     if (hitsBlocks(_oA)) return 'wall';
     if (hitsStructures(_oA, ignore)) return 'taken';
@@ -1092,6 +1124,7 @@
   // Structures whose floor vanished (a block was knocked out, a tile sank) drop onto the next
   // floor below, or into the sea when there is none.
   let supportT = 0;
+  let holdLight = null;
   function checkSupport(dt) {
     supportT -= dt;
     if (supportT > 0 || !structures.length) return;
@@ -1123,6 +1156,202 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Below-deck hold (podpalubí)
+  // ---------------------------------------------------------------------------
+  let holdsDirty = false;
+  const holdGroup = new THREE.Group();
+  holdGroup.name = 'holds';
+  function holdAt(x, z) {
+    const t = grid.get(nkey(Math.floor(x / TILE), Math.floor(z / TILE)));
+    return t && t.hold ? t : null;
+  }
+  // Inside the hold, clear of its outer walls.
+  function holdInterior(x, z) {
+    const t = holdAt(x, z);
+    if (!t) return false;
+    const lx = x - t.i * TILE, lz = z - t.j * TILE;
+    for (let r = 0; r < 4; r++) {
+      const d = DIRS[r], n = grid.get(nkey(t.i + d[0], t.j + d[1]));
+      if (n && n.hold) continue;
+      const dist = d[0] > 0 ? TILE - lx : d[0] < 0 ? lx : d[1] > 0 ? TILE - lz : lz;
+      if (dist < HOLD_WALL) return false;
+    }
+    return true;
+  }
+  // World point in the hold's air space.
+  function inHold(x, y, z) {
+    if (!holdAt(x, z)) return false;
+    const d = raft.deckY();
+    return y < d + HOLD_CEIL && y > d + HOLD_FLOOR - 0.6;
+  }
+  function holdGeo(mask) {
+    const key = 'hold' + mask;
+    if (GEO[key]) return GEO[key];
+    const b = new Builder();
+    const H = HOLD_CEIL - HOLD_FLOOR + 0.12, yMid = (HOLD_CEIL + HOLD_FLOOR - 0.12) / 2;
+    b.box(TILE, 0.12, TILE, { y: HOLD_FLOOR - 0.06, c: 0x7a5434, reg: REG.wood });
+    for (let k = 0; k < 4; k++) b.box(0.02, 0.006, TILE - 0.02, { x: -0.75 + k * 0.5, y: HOLD_FLOOR + 0.003, c: 0x4e3420 });
+    DIRS.forEach((d, r) => {
+      if (!(mask & (1 << r))) return;
+      const x = d[0] * (TILE / 2 - HOLD_WALL / 2), z = d[1] * (TILE / 2 - HOLD_WALL / 2);
+      b.box(d[0] ? HOLD_WALL : TILE, H, d[1] ? HOLD_WALL : TILE, { x, y: yMid, z, c: 0x8a6240, reg: REG.wood });
+      for (const t of [-0.55, 0.55]) {
+        b.box(d[0] ? 0.07 : 0.12, H - 0.1, d[1] ? 0.07 : 0.12,
+          { x: d[0] ? x - d[0] * 0.09 : t, y: yMid, z: d[1] ? z - d[1] * 0.09 : t, c: COL.beam });
+      }
+      b.box(d[0] ? 0.06 : TILE, 0.07, d[1] ? 0.06 : TILE, { x: d[0] ? x - d[0] * 0.09 : 0, y: HOLD_FLOOR + 1.1, z: d[1] ? z - d[1] * 0.09 : 0, c: COL.frame });
+    });
+    GEO[key] = b.build();
+    return GEO[key];
+  }
+  function holdMask(t) {
+    let m = 0;
+    DIRS.forEach((d, r) => { const n = grid.get(nkey(t.i + d[0], t.j + d[1])); if (!n || !n.hold) m |= 1 << r; });
+    return m;
+  }
+  function refreshHolds() {
+    holdsDirty = false;
+    for (const t of tiles.values()) {
+      if (!t.hold) { if (t.holdMesh) { holdGroup.remove(t.holdMesh); t.holdMesh = null; } continue; }
+      const m = holdMask(t);
+      if (t.holdMesh && t.holdMask === m) continue;
+      if (t.holdMesh) holdGroup.remove(t.holdMesh);
+      const mm = mesh(holdGeo(m), M.atlas);
+      mm.position.set((t.i + 0.5) * TILE, G.C.DECK_Y, (t.j + 0.5) * TILE);
+      mm.updateMatrixWorld(true);
+      holdGroup.add(mm);
+      t.holdMesh = mm; t.holdMask = m;
+    }
+  }
+  function addHold(t, free) {
+    t = resolveTile(t);
+    if (!t || t.hold) return false;
+    if (!free && !pay(HOLD_COST)) return false;
+    t.hold = true;
+    holdsDirty = true;
+    if (!quiet) {
+      const c = tileCenter(t, new THREE.Vector3());
+      snd('build', c, 0.8);
+      fxCall('debris', c, WOOD_CHIP, 10);
+      G.events.emit('build:hold', { i: t.i, j: t.j });
+    }
+    return true;
+  }
+  // '' when removed (materials back), else the reason in Czech.
+  function removeHold(t) {
+    t = resolveTile(t);
+    if (!t || !t.hold) return 'Tady žádné podpalubí není.';
+    for (const s of structures) {
+      if (s.y < -0.5 && holdAt(s.x, s.z) === t) return 'V podpalubí ještě něco stojí. Nejdřív to odnes.';
+      if (s.type === 'hatch' && s.tile === t) return 'Nejdřív rozeber poklop nad podpalubím.';
+    }
+    const P = G.player;
+    if (P && P.position && inHold(P.position.x, P.position.y + 0.9, P.position.z) && holdAt(P.position.x, P.position.z) === t) return 'Nejdřív z podpalubí vylez.';
+    t.hold = false;
+    holdsDirty = true;
+    if (!quiet) {
+      for (const id in HOLD_COST) G.inventory.add(id, HOLD_COST[id], 'refund');
+      G.events.emit('hold:removed', { i: t.i, j: t.j });
+    }
+    return '';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hatch (Poklop): the way down into the hold
+  // ---------------------------------------------------------------------------
+  function hatchGeo() {
+    if (GEO.hatch) return GEO.hatch;
+    const w = new Builder(), lid = new Builder();
+    for (const sx of [-1, 1]) {
+      w.box(0.1, 0.07, 1.0, { x: sx * 0.45, y: 0.035, c: COL.frame, reg: REG.wood });
+      w.box(0.8, 0.07, 0.1, { z: sx * 0.45, y: 0.035, c: COL.frame, reg: REG.wood });
+    }
+    w.box(0.8, 0.01, 0.8, { y: 0.003, c: 0x140d07 });                                   // dark opening
+    // ladder down into the hold
+    for (const sx of [-1, 1]) w.box(0.045, -HOLD_FLOOR, 0.045, { x: sx * 0.22, y: HOLD_FLOOR / 2, z: 0.3, c: COL.beam });
+    for (let y = HOLD_FLOOR + 0.3; y < -0.2; y += 0.32) w.box(0.44, 0.035, 0.04, { y, z: 0.3, c: 0xb58a58, reg: REG.wood });
+    for (let k = 0; k < 4; k++) lid.box(0.19, 0.045, 0.8, { x: -0.3 + k * 0.2, y: 0.0225, z: 0.4, c: COL.plank[k % 5], reg: REG.wood });
+    lid.box(0.8, 0.02, 0.08, { y: 0.055, z: 0.15, c: COL.dark });
+    lid.box(0.8, 0.02, 0.08, { y: 0.055, z: 0.65, c: COL.dark });
+    lid.torus(0.05, 0.012, 4, 8, TAU, { y: 0.06, z: 0.72, rx: HALF_PI, c: COL.brass });
+    GEO.hatch = { wood: w.build(), lid: lid.build() };
+    return GEO.hatch;
+  }
+  function createHatch(s) {
+    const g = new THREE.Group(), geo = hatchGeo();
+    g.add(mesh(geo.wood, M.atlas));
+    const pivot = new THREE.Group();
+    pivot.position.set(0, 0.07, -0.4);
+    pivot.add(mesh(geo.lid, M.atlas));
+    g.add(pivot);
+    s._v = { pivot, open: 0, openT: 0 };
+    if (!s.ghost && !s.mini) {
+      s._up = G.interaction.add({
+        structure: s,
+        size: 0.8,
+        getPosition(out) { return toWorld(s, 0, HOLD_FLOOR + 1.3, 0.3, out); },
+        label: () => 'Vylézt na palubu',
+        enabled: () => playerInHold(),
+        onInteract() { hatchUp(s); },
+      });
+    }
+    return g;
+  }
+  function playerInHold() {
+    const P = G.player;
+    return !!(P && P.position && inHold(P.position.x, P.position.y + 0.9, P.position.z));
+  }
+  function hatchDown(s) {
+    const P = G.player;
+    if (!P || !P.position) return;
+    const p = toWorld(s, 0, HOLD_FLOOR + 0.01, -0.1, new THREE.Vector3());
+    P.position.copy(p);
+    if (P.velocity) P.velocity.set(0, 0, 0);
+    s._v.openT = 1.2;
+    snd('creak', p, 0.7);
+    if (!raft._holdTip) { raft._holdTip = true; G.notify('Jsi v podpalubí. Můžeš sem postavit truhly a další vybavení.', 'info'); }
+    G.events.emit('hold:entered', { down: true });
+  }
+  function hatchUp(s) {
+    const P = G.player;
+    if (!P || typeof P.teleport !== 'function') return;
+    const out = new THREE.Vector3();
+    const Bd = G.build, dy = raft.deckY();
+    let spot = null;
+    for (const [lx, lz] of [[0, -0.95], [0.95, 0], [-0.95, 0], [0, 0.95]]) {
+      toWorld(s, lx, 0, lz, out);
+      if (!raft.tileAt(out.x, out.z)) continue;
+      if (Bd && Bd.blocked && Bd.blocked(out.x, out.z, dy + 0.3, dy + 1.7, 0.3)) continue;
+      spot = out; break;
+    }
+    if (!spot) spot = toWorld(s, 0, 0, 0, out);
+    P.teleport(spot.x, spot.z);
+    s._v.openT = 1.2;
+    snd('creak', spot, 0.7);
+    G.events.emit('hold:entered', { down: false });
+  }
+  registerStructure('hatch', {
+    name: 'Poklop', item: 'poklop', ownShadows: false, size: 0.7, interactY: 0.3,
+    create: createHatch,
+    interact: {
+      label: () => 'Slézt do podpalubí',
+      enabled: () => !playerInHold(),
+      onInteract: hatchDown,
+    },
+    frame(s, dt) {
+      const v = s._v;
+      if (v.openT > 0) v.openT -= dt;
+      const target = v.openT > 0 ? 1 : 0;
+      if (v.open !== target) {
+        v.open = G.damp(v.open, target, 9, dt);
+        if (Math.abs(v.open - target) < 0.01) v.open = target;
+        v.pivot.rotation.x = -v.open * 1.9;
+      }
+    },
+    remove(s) { if (s._up) { G.interaction.remove(s._up); s._up = null; } },
+  });
+
   function markShadows(obj) {
     obj.traverse((o) => {
       if (o.isMesh && !o.userData.noShadow && !(o.material && o.material.transparent)) { o.castShadow = true; o.receiveShadow = true; }
@@ -1140,7 +1369,7 @@
     let x, y, z, angle;
     if (at && Number.isFinite(at.x) && Number.isFinite(at.z)) {
       x = at.x; z = at.z;
-      y = Number.isFinite(at.y) ? Math.max(0, at.y) : 0;
+      y = Number.isFinite(at.y) ? Math.max(HOLD_FLOOR, at.y) : 0;
       angle = Number.isFinite(at.angle) ? at.angle : normRot(rotation) * HALF_PI;
       tile = nearestTile(x, z);
     } else {
@@ -1271,12 +1500,15 @@
   }
 
   function updateFlags() {
-    let sail = false, anchor = false;
+    let sail = false, anchor = false, power = 0;
     for (const s of structures) {
-      if (s.type === 'sail' && s.data && s.data.up) sail = true;
-      else if (s.type === 'anchor' && s.data && s.data.down) anchor = true;
+      if ((s.type === 'sail' || s.type === 'bigsail') && s.data && s.data.up) {
+        sail = true;
+        power = Math.max(power, s.type === 'bigsail' ? BIG_SAIL_POWER : 1);
+      } else if (s.type === 'anchor' && s.data && s.data.down) anchor = true;
     }
     raft.sailUp = sail;
+    raft.sailPower = power || 1;
     raft.anchored = anchor;
   }
 
@@ -1843,10 +2075,28 @@
     const up = !!(s.data && s.data.up);
     const w = G.world && G.world.windDir;
     const yaw = w ? Math.atan2(w.x, w.z) - s.rotation * HALF_PI : 0;
-    s._v = { rig, cloth, furl, batten, pennant, raise: up ? 1 : 0, yaw, still: false };
+    s._v = { rig, cloth, furl, batten, pennant, raise: up ? 1 : 0, yaw, still: false, big: s.type === 'bigsail', kx: 1, widthT: 0 };
     rig.rotation.y = yaw;
+    if (s._v.big) {
+      // taller mast; the rig (yard + cloth) is stretched sideways to span the raft
+      g.children[0].scale.y = BIG_KY;
+      rig.scale.set(bigWidth(s) / 2, BIG_KY, 1.25);
+      s._v.kx = rig.scale.x;
+      rig.remove(pennant);                 // keep the pennant undistorted: it sits on the mast top
+      pennant.position.set(0, 4.52 * BIG_KY, 0);
+      pennant.scale.setScalar(1.4);
+      g.add(pennant);
+    }
     updateCloth(s);
     return g;
+  }
+  const BIG_KY = 1.6;
+  // The big sail spans most of the raft (4–10 m wide).
+  function bigWidth(s) {
+    if (s.ghost || s.mini || !tiles.size) return 6;
+    refresh();
+    const w = (cache.maxI - cache.minI + 1) * TILE, d = (cache.maxJ - cache.minJ + 1) * TILE;
+    return G.clamp(Math.max(w, d) * 0.85, 4, 10);
   }
   function updateCloth(s) {
     const v = s._v;
@@ -1897,8 +2147,14 @@
       updateCloth(s);
       v.still = !moving && v.raise <= 0.01;
     }
-    v.pennant.rotation.y = Math.sin(clock * 7 + s.tile.j) * 0.25;
+    v.pennant.rotation.y = (v.big ? v.yaw : 0) + Math.sin(clock * 7 + s.tile.j) * 0.25;
     v.pennant.rotation.z = Math.sin(clock * 11) * 0.12;
+    if (v.big) {
+      // follow the raft size as it grows or shrinks
+      v.widthT -= dt;
+      if (v.widthT <= 0) { v.widthT = 1; v.kxT = bigWidth(s) / 2; }
+      if (v.kxT && Math.abs(v.kx - v.kxT) > 0.001) { v.kx = G.damp(v.kx, v.kxT, 1.5, dt); v.rig.scale.x = v.kx; }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2109,6 +2365,183 @@
       s._v.raise = s.data.up ? 1 : 0;
       s._v.still = false;
       updateCloth(s);
+    },
+  });
+
+  registerStructure('bigsail', {
+    name: 'Velká plachta', item: 'plachta_velka', ownShadows: true, size: 0.5, interactY: 1.2,
+    data: () => ({ up: false }),
+    create: createSail,
+    interact: { label: (s) => (s.data.up ? 'Stáhnout velkou plachtu' : 'Vytáhnout velkou plachtu'), onInteract: sailUse },
+    frame: sailFrame,
+    save: (s) => ({ up: !!s.data.up }),
+    load(s, d) {
+      s.data.up = !!(d && d.up);
+      s._v.raise = s.data.up ? 1 : 0;
+      s._v.still = false;
+      updateCloth(s);
+    },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Mast (Stožár) with a crow's nest you can climb up to
+  // ---------------------------------------------------------------------------
+  function mastGeo() {
+    if (GEO.mast) return GEO.mast;
+    const w = new Builder(), r = new Builder();
+    w.box(0.6, 0.1, 0.6, { y: 0.05, c: COL.frame, reg: REG.wood });
+    for (let k = 0; k < 4; k++) w.box(0.12, 0.14, 0.06, { y: 0.17, x: Math.cos(k * HALF_PI) * 0.16, z: Math.sin(k * HALF_PI) * 0.16, ry: k * HALF_PI, c: COL.beam });
+    w.cyl(0.08, 0.12, 6.2, 8, { y: 3.1, c: 0x9c7248, reg: REG.bark, cap: REG.rings, capC: COL.logEnd });
+    // ladder on the +z side
+    for (const sx of [-1, 1]) w.box(0.04, NEST_Y, 0.04, { x: sx * 0.16, y: NEST_Y / 2, z: 0.2, c: COL.beam });
+    for (let y = 0.35; y < NEST_Y; y += 0.35) w.box(0.34, 0.03, 0.035, { y, z: 0.2, c: 0xb58a58, reg: REG.wood });
+    // crow's nest: floor, railing posts, rope rail
+    w.cyl(NEST_R + 0.05, NEST_R + 0.05, 0.1, 12, { y: NEST_Y - 0.05, c: 0x8a6240, reg: REG.wood, capC: 0xb08253 });
+    w.cyl(NEST_R - 0.1, NEST_R + 0.05, 0.22, 12, { y: NEST_Y - 0.21, c: COL.frame, reg: REG.wood });
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * TAU;
+      w.box(0.05, 0.85, 0.05, { x: Math.cos(a) * NEST_R, y: NEST_Y + 0.42, z: Math.sin(a) * NEST_R, c: COL.beam });
+    }
+    w.torus(NEST_R, 0.03, 4, 16, TAU, { y: NEST_Y + 0.85, rx: HALF_PI, c: COL.rope, reg: REG.plain });
+    w.torus(NEST_R, 0.02, 4, 16, TAU, { y: NEST_Y + 0.45, rx: HALF_PI, c: COL.rope, reg: REG.plain });
+    // stays down to the deck
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) w.rod(0, NEST_Y - 0.3, 0, sx * 0.85, 0.04, sz * 0.85, 0.011, 4, { c: COL.rope, reg: REG.plain });
+    r.cyl(0.012, 0.012, 0.45, 4, { y: 6.4, c: COL.dark });
+    r.cone(0.07, 0.4, 3, { y: 6.5, z: 0.2, rx: HALF_PI, sx: 0.25, c: 0x2f73a0 });
+    GEO.mast = { wood: w.build(), top: r.build() };
+    return GEO.mast;
+  }
+  function onNest(s) {
+    const P = G.player;
+    if (!P || !P.position) return false;
+    const c = toWorld(s, 0, NEST_Y, 0, _v2);
+    return Math.hypot(P.position.x - c.x, P.position.z - c.z) < NEST_R + 0.3 && P.position.y > c.y - 0.6;
+  }
+  function createMast(s) {
+    const g = new THREE.Group(), geo = mastGeo();
+    g.add(mesh(geo.wood, M.atlas));
+    const top = mesh(geo.top, M.atlas, false);
+    g.add(top);
+    s._v = { top };
+    if (!s.ghost && !s.mini) {
+      // second interaction point up in the nest: climb down
+      s._down = G.interaction.add({
+        structure: s,
+        size: 0.8,
+        getPosition(out) { return toWorld(s, 0, NEST_Y + 0.9, 0.3, out); },
+        label: () => 'Slézt dolů',
+        enabled: () => onNest(s),
+        onInteract() { mastDown(s); },
+      });
+    }
+    return g;
+  }
+  function mastUp(s) {
+    const P = G.player;
+    if (!P || !P.position) return;
+    const top = toWorld(s, 0, NEST_Y + 0.02, 0.45, new THREE.Vector3());
+    P.position.copy(top);
+    if (P.velocity) P.velocity.set(0, 0, 0);
+    snd('creak', top, 0.6);
+    if (!s._tipShown) { s._tipShown = true; G.notify('Z koše vidíš daleko. Dalekohledem si obzor přiblížíš.', 'info'); }
+    G.events.emit('mast:climbed', { up: true });
+  }
+  function mastDown(s) {
+    const P = G.player;
+    if (!P || typeof P.teleport !== 'function') return;
+    const b = toWorld(s, 0, 0, 0.75, new THREE.Vector3());
+    if (!raft.tileAt(b.x, b.z)) toWorld(s, 0, 0, -0.75, b);
+    P.teleport(b.x, b.z);
+    snd('step', b, 0.6);
+    G.events.emit('mast:climbed', { up: false });
+  }
+  registerStructure('mast', {
+    name: 'Stožár', item: 'stozar', ownShadows: false, size: 0.6, interactAt: [0, 0.9, 0.25],
+    create: createMast,
+    interact: {
+      label: () => 'Vylézt na stožár',
+      enabled: (s) => !onNest(s),
+      onInteract: mastUp,
+    },
+    frame(s) { s._v.top.rotation.y = Math.sin(clock * 0.7 + s.x) * 0.4; },
+    remove(s) { if (s._down) { G.interaction.remove(s._down); s._down = null; } },
+  });
+
+  // ---------------------------------------------------------------------------
+  // Bed (Postel): sleep through the night
+  // ---------------------------------------------------------------------------
+  function bedGeo() {
+    if (GEO.bed) return GEO.bed;
+    const w = new Builder(), c = new Builder();
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) w.box(0.08, 0.3, 0.08, { x: sx * 0.46, y: 0.15, z: sz * 0.96, c: COL.beam });
+    w.box(1.0, 0.08, 2.0, { y: 0.26, c: 0x8a6240, reg: REG.wood });
+    w.box(1.02, 0.7, 0.07, { y: 0.35, z: -1.0, c: 0x7a5434, reg: REG.wood });
+    w.box(1.02, 0.4, 0.06, { y: 0.2, z: 1.0, c: 0x7a5434, reg: REG.wood });
+    w.box(0.92, 0.14, 1.9, { y: 0.37, c: 0xc9b77a, reg: REG.plain });                    // straw mattress
+    c.box(0.6, 0.1, 0.32, { y: 0.49, z: -0.72, c: 0xf1ead8 });                            // pillow
+    c.box(0.96, 0.06, 1.2, { y: 0.47, z: 0.33, c: 0x2f7f8c });                            // blanket
+    c.box(0.97, 0.02, 0.12, { y: 0.505, z: -0.22, c: 0xe6cf9f });
+    GEO.bed = { wood: w.build(), cloth: c.build() };
+    return GEO.bed;
+  }
+  function createBed(s) {
+    const g = new THREE.Group(), geo = bedGeo();
+    g.add(mesh(geo.wood, M.atlas), mesh(geo.cloth, M.atlas));
+    return g;
+  }
+  function canSleep() {
+    if (!(G.world && G.world.isNight && G.world.isNight())) return 'Spát se dá jen v noci.';
+    if (G.pirates && G.pirates.active) return 'Teď se spát nedá – piráti jsou blízko!';
+    if (G.shark && G.shark.state === 'attackRaft') return 'Teď se spát nedá – žralok útočí na vor!';
+    return '';
+  }
+  let fadeEl = null, sleeping = false;
+  function sleepFade(on) {
+    if (!fadeEl) {
+      fadeEl = document.createElement('div');
+      fadeEl.id = 'sleep-fade';
+      fadeEl.setAttribute('aria-hidden', 'true');
+      fadeEl.style.cssText = 'position:fixed;inset:0;background:#02080b;opacity:0;transition:opacity .8s ease;pointer-events:none;z-index:40';
+      document.body.appendChild(fadeEl);
+    }
+    fadeEl.style.opacity = on ? '1' : '0';
+  }
+  function bedUse(s) {
+    const why = canSleep();
+    if (why) { G.notify(why, 'warn'); G.sfx('error'); return; }
+    if (sleeping) return;
+    sleeping = true;
+    G.setUIBlock('sleep', true);
+    sleepFade(true);
+    // the actual night skip happens under the black screen (also works when timers are throttled)
+    setTimeout(() => {
+      try {
+        if (G.world && typeof G.world.skipTo === 'function') G.world.skipTo(0.27);
+        const P = G.player;
+        if (P) {
+          P.hunger = Math.max(8, (P.hunger || 0) - 18);
+          P.thirst = Math.max(8, (P.thirst || 0) - 22);
+          if (typeof P.heal === 'function') P.heal(35);
+        }
+        G.events.emit('player:slept', { day: G.world ? G.world.day : 0 });
+        if (G.save && G.save.write) G.save.write();
+      } finally {
+        setTimeout(() => {
+          sleepFade(false);
+          G.setUIBlock('sleep', false);
+          sleeping = false;
+          G.notify('Dobré ráno! Noc uběhla a máš zase sílu. Den ' + (G.world ? G.world.day : '') + '.', 'good');
+        }, 700);
+      }
+    }, 900);
+  }
+  registerStructure('bed', {
+    name: 'Postel', item: 'postel', ownShadows: false, size: 0.8, interactY: 0.5,
+    create: createBed,
+    interact: {
+      label: () => (canSleep() ? 'Postel – ' + canSleep().toLowerCase().replace(/\.$/, '') : 'Spát do rána'),
+      passive: () => !!canSleep(),
+      onInteract: bedUse,
     },
   });
 
@@ -2569,13 +3002,14 @@
     const Bd = G.build;
     if (Bd && typeof Bd.solidAt === 'function') { const top = Bd.solidAt(x, ly, z); if (top !== null) return top; }
     if (ly <= 0 && ly > -0.45 && grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE)))) return 0;
+    if (ly <= HOLD_FLOOR && ly > HOLD_FLOOR - 0.3 && holdAt(x, z)) return HOLD_FLOOR;
     return null;
   }
   function aimFloor(range, out) {
     const base = raft.deckY();
     let prev = 0.2;
     for (let t = 0.2; t <= range; t += 0.1) {
-      if (_dir.y < 0 && _eye.y + _dir.y * t - base < -0.6) return null;
+      if (_dir.y < 0 && _eye.y + _dir.y * t - base < (_eye.y - base < -0.5 ? HOLD_FLOOR - 0.5 : -0.6)) return null;
       if (solidTopAt(t, base) === null) { prev = t; continue; }
       let lo = prev, hi = t;
       for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; if (solidTopAt(m, base) === null) lo = m; else hi = m; }
@@ -2768,7 +3202,16 @@
     structures,
     velocity,
     sailUp: false,
+    sailPower: 1,
     anchored: false,
+    NEST_Y,
+    HOLD_FLOOR,
+    HOLD_CEIL,
+    HOLD_COST,
+    holdAt,
+    inHold,
+    addHold,
+    removeHold,
     // --- contract ---
     deckY() { return group.position.y + G.C.DECK_Y; },
     tileAt(x, z) { return grid.get(nkey(Math.floor(x / TILE), Math.floor(z / TILE))) || null; },
@@ -2882,7 +3325,7 @@
   }
 
   function updateSpeed(dt) {
-    const target = raft.anchored ? 0 : raft.sailUp ? SPEED_SAIL : SPEED_DRIFT;
+    const target = raft.anchored ? 0 : raft.sailUp ? SPEED_SAIL * (raft.sailPower || 1) : SPEED_DRIFT;
     speed = G.damp(speed, target, 0.6, dt);
     if (Math.abs(speed - target) < 0.002) speed = target;
     const w = G.world && G.world.windDir;
@@ -2959,6 +3402,32 @@
         kind: 'raft',
         heightAt(x, z) { return grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE))) ? raft.deckY() : null; },
       });
+      group.add(holdGroup);
+      // a warm lantern light that goes on when the player climbs down into a hold
+      holdLight = new THREE.PointLight(0xffc98a, 0, 9, 1.4);
+      holdLight.position.set(0.2, 0.3, 0.1);
+      G.camera.add(holdLight);
+      // floors of below-deck holds
+      G.ground.add({
+        kind: 'hold',
+        heightAt(x, z) { return holdAt(x, z) ? raft.deckY() + HOLD_FLOOR : null; },
+      });
+      // crow's nests on masts
+      G.ground.add({
+        kind: 'nest',
+        heightAt(x, z) {
+          let best = null;
+          for (let k = 0; k < structures.length; k++) {
+            const s = structures[k];
+            if (s.type !== 'mast') continue;
+            const dx = x - s.x, dz = z - s.z;
+            if (dx * dx + dz * dz > NEST_R * NEST_R) continue;
+            const h = raft.deckY() + s.y + NEST_Y;
+            if (best === null || h > best) best = h;
+          }
+          return best;
+        },
+      });
     },
 
     reset() {
@@ -2985,7 +3454,7 @@
 
     save() {
       const outTiles = [];
-      for (const t of tiles.values()) outTiles.push({ i: t.i, j: t.j, hp: Math.round(t.hp * 10) / 10, reinforced: t.reinforced ? 1 : 0 });
+      for (const t of tiles.values()) outTiles.push({ i: t.i, j: t.j, hp: Math.round(t.hp * 10) / 10, reinforced: t.reinforced ? 1 : 0, hold: t.hold ? 1 : 0 });
       const outS = [];
       for (const s of structures) {
         const def = structureDefs[s.type];
@@ -3016,6 +3485,7 @@
             t.maxHp = r ? HP_REINFORCED : HP_NORMAL;
             const hp = Number(o.hp);
             t.hp = Number.isFinite(hp) ? G.clamp(hp, 1, t.maxHp) : t.maxHp;
+            if (o.hold) { t.hold = true; holdsDirty = true; }
             refreshTile(t);
           }
           if (!tiles.size) addStartTiles();
@@ -3027,7 +3497,7 @@
             const x = Number(o.x), z = Number(o.z);
             const lim = (MAX_SPAN + 4) * TILE;
             if (Number.isFinite(x) && Number.isFinite(z) && Math.abs(x) < lim && Math.abs(z) < lim) {
-              const y = G.clamp(Number(o.y) || 0, 0, 20), a = Number(o.a);
+              const y = G.clamp(Number(o.y) || 0, HOLD_FLOOR, 20), a = Number(o.a);
               placeStructure(o.type, null, o.rotation, data, { x, y, z, angle: Number.isFinite(a) ? a : undefined });
               continue;
             }
@@ -3038,7 +3508,7 @@
           }
         }
         const sp = Number(d.speed);
-        if (Number.isFinite(sp)) speed = G.clamp(sp, 0, SPEED_SAIL);
+        if (Number.isFinite(sp)) speed = G.clamp(sp, 0, SPEED_SAIL * BIG_SAIL_POWER);
         updateFlags();
       } finally { quiet--; dirty = true; }
     },
@@ -3061,6 +3531,14 @@
       frameNo++;
       clock += dt;
       bob(dt);
+      if (holdsDirty) refreshHolds();
+      if (holdLight) {
+        const want = G.state === 'playing' && playerInHold() ? 1.6 : 0;
+        if (holdLight.intensity !== want) {
+          const v = G.damp(holdLight.intensity, want, 6, dt);
+          holdLight.intensity = want === 0 && v < 0.02 ? 0 : v;
+        }
+      }
       animTiles(dt);
       animStructures(dt);
       if (!G.paused) {

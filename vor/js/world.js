@@ -89,6 +89,17 @@
     waveHeight,
     waveNormal,
     isNight() { return sunDir.y < -0.03; },
+    // Jump forward to the next time the day fraction is f (sleeping); passing midnight starts a new day.
+    skipTo(f) {
+      f = wrap(Number(f) || 0, 1);
+      if (f <= world.dayFraction) {
+        world.day += 1;
+        G.stats.days = world.day;
+        G.events.emit('world:day', { day: world.day });
+      }
+      setDayFraction(f);
+      if (oceanMat) updateSky();
+    },
     // --- extras (documented in the report) ---
     sunDir,                 // unit vector towards the sun
     moonDir,                // unit vector towards the moon
@@ -427,6 +438,7 @@
     uniform vec3 uFlashCol;
     uniform vec4 uShallow[4];    // x, z, radius, strength (0 = unused)
     uniform vec3 uShallowCol;
+    uniform sampler2D uRaftMap;
     varying vec3 vWorld;
     varying vec2 vGrad;
     varying float vH;
@@ -434,6 +446,8 @@
     varying vec4 vFog;
 
     void main() {
+      // no sea surface inside a below-deck hold (green channel of the raft map, sampled at the tile centre)
+      if (texture2D(uRaftMap, (floor(vWorld.xz * 0.5) + 16.5) / 32.0).g > 0.5) discard;
       vec3 toCam = cameraPosition - vWorld;
       float dist = length(toCam);
       vec3 V = toCam / dist;
@@ -635,6 +649,7 @@
   let rain = null, rainMat = null, bolts = [], boltMesh = null;
   const occData = new Uint8Array(32 * 32 * 4);
   const occNext = new Uint8Array(32 * 32);
+  const holdNext = new Uint8Array(32 * 32);
 
   const _v = new THREE.Vector3(), _v2 = new THREE.Vector3(), _cam = new THREE.Vector3();
   const _c = new THREE.Color(), _c2 = new THREE.Color();
@@ -1424,18 +1439,20 @@
   function refreshRaftMap() {
     if (!raftTex) return;
     occNext.fill(0);
+    holdNext.fill(0);
     const raft = G.raft;
     const tiles = raft && raft.tiles;
     if (tiles && typeof tiles.forEach === 'function') {
       tiles.forEach((t) => {
         if (!t) return;
         const i = (t.i | 0) + 16, j = (t.j | 0) + 16;
-        if (i >= 0 && i < 32 && j >= 0 && j < 32) occNext[j * 32 + i] = 255;
+        if (i >= 0 && i < 32 && j >= 0 && j < 32) { occNext[j * 32 + i] = 255; if (t.hold) holdNext[j * 32 + i] = 255; }
       });
     }
     let changed = false;
     for (let k = 0; k < 1024; k++) {
       if (occData[k * 4] !== occNext[k]) { occData[k * 4] = occNext[k]; changed = true; }
+      if (occData[k * 4 + 1] !== holdNext[k]) { occData[k * 4 + 1] = holdNext[k]; changed = true; }
     }
     if (changed) raftTex.needsUpdate = true;
   }
@@ -1663,7 +1680,7 @@
       refreshRaftMap();
       if (d && d.fresh === false && stormTarget > 0) G.events.emit('world:storm', { active: true });
     });
-    for (const ev of ['build:tile', 'tile:destroyed']) G.events.on(ev, () => { occTimer = 0; });
+    for (const ev of ['build:tile', 'tile:destroyed', 'build:hold', 'hold:removed']) G.events.on(ev, () => { occTimer = 0; });
     G.events.on('settings:changed', (s) => {
       const q = s && s.quality === 'low' ? 'low' : 'high';
       if (q !== oceanQuality) {
@@ -1886,7 +1903,8 @@
 
     // underwater?
     G.camera.getWorldPosition(_cam);
-    const under = _cam.y < waveHeight(_cam.x, _cam.z) - 0.04;
+    const raftApi = G.raft;
+    const under = _cam.y < waveHeight(_cam.x, _cam.z) - 0.04 && !(raftApi && raftApi.inHold && raftApi.inHold(_cam.x, _cam.y, _cam.z));
     world.underwater = under;
     U.uUnder.value = under ? 1 : 0;
 

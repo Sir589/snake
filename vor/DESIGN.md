@@ -537,6 +537,15 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Lookout & comfort (ROADMAP 3).** Items `plachta_velka` (structure `bigsail`: the sail model with a taller mast and
+  a rig stretched to ~85 % of the raft size; `G.raft.sailPower` 1.6 → 3.5 m/s), `stozar` (`mast`: 5 m crow's nest, ground
+  provider kind `nest`, E climbs up / down), `postel` (`bed`: at night E skips to morning via `G.world.skipTo(0.27)`,
+  emits `player:slept`), `dalekohled` (tool `telescope` in js/telescope.js; sets `G.player.zoom`, which player.js turns
+  into a narrower FOV and slower look). **Hold (podpalubí):** hammer palette entry `podpalubi` → `G.raft.addHold(tile)`
+  makes a dry room under a tile (`HOLD_FLOOR` −2.4 m … `HOLD_CEIL` −0.35 m, ground kind `hold`, `tile.hold` saved);
+  the hatch (`poklop` / `hatch`) leads down and up. player.js walls the player in (`holdAt`), world.js hides the sea
+  surface there (green channel of the raft map) and skips the underwater look (`G.raft.inHold`). Structures may
+  stand on the hold floor (negative `s.y`).
 - **Fine building (ROADMAP 2).** build.js also keeps *pieces*: axis-aligned boxes `{ t, x0..x1, y0..y1, z0..z1, rot }`
   (types with `fine: true`: prkenko 1×0.125×0.25, tram 1×0.25×0.25, sloup 0.25×1×0.25, pulblok 0.5³). x/z snap to
   `G.build.fineStep` (0.25 or 0.5, key G), y to 12.5 cm; R turns planks/beams 90°. `heightAt`, `blocked` and

@@ -112,6 +112,8 @@
     ['Otočit stavbu (vybavení po 15°)', K('R') + ' nebo pravé tlačítko myši, zpět ' + K('Shift') + '+' + K('R'), '◐ nebo ↻'],
     ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
     ['Jemné díly (prkénko, trám, sloup, půlblok)', K('G') + ' mřížka 25 / 50 cm, ' + K('R') + ' otočit', 'vyber díl v nabídce kladiva'],
+    ['Dalekohled', 'podrž levé tlačítko, pravé = zvětšení 4× / 8×', '● podrž, ◐ zvětšení'],
+    ['Podpalubí', 'kladivo → Podpalubí pod díl voru, dolů poklopem (' + K('E') + ')', 'kladivo → Podpalubí, E u poklopu'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
     ['Nápověda', K('H'), '—'],
     ['Ztlumit zvuk', K('M'), '—'],
@@ -607,7 +609,7 @@
       const arr = Array.isArray(R.structures) ? R.structures : null;
       if (arr) for (let i = 0; i < arr.length; i++) {
         const t = arr[i] && arr[i].type;
-        if (t === 'sail') hasSail = true; else if (t === 'anchor') hasAnchor = true;
+        if (t === 'sail' || t === 'bigsail') hasSail = true; else if (t === 'anchor') hasAnchor = true;
       }
       showEl(E['st-sail'], hasSail || !!R.sailUp);
       setCls(E['st-sail'], 'on', !!R.sailUp);

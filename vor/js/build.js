@@ -25,6 +25,7 @@
   // solid(u) returns the solid height (0..h) at the point u (0..1 along the block's local +z).
   const TYPES = [
     { id: 'zaklad', name: 'Základ voru', icon: '🛟', raft: true },
+    { id: 'podpalubi', name: 'Podpalubí', icon: '🕳️', hold: true },
     { id: 'blok', name: 'Dřevěný blok', icon: '🟫', shape: 'cube', cost: { prkno: 1 }, tex: 'planks', color: 0xb98a58 },
     { id: 'deska', name: 'Podlaha', icon: '▬', shape: 'slab', cost: { prkno: 1 }, tex: 'planks', color: 0xc49a66 },
     { id: 'prkenko', name: 'Prkénko', icon: '📏', fine: true, size: [1, 0.125, 0.25], cost: { prkno: 1 }, tex: 'planks', color: 0xcfa36c, rot: true },
@@ -852,7 +853,7 @@
       btn.className = 'bp-it';
       btn.id = 'bp-' + t.id;
       btn.title = t.name;
-      btn.innerHTML = '<span>' + t.icon + '</span><small>' + (t.raft ? 'Vor' : shortName(t.name)) + '</small>';
+      btn.innerHTML = '<span>' + t.icon + '</span><small>' + (t.raft ? 'Vor' : t.hold ? 'Podpal.' : shortName(t.name)) + '</small>';
       btn.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); select(i); });
       paletteEl.appendChild(btn);
       paletteItems.push(btn);
@@ -863,6 +864,7 @@
     host.appendChild(paletteEl);
     host.appendChild(nameEl);
   }
+  function costOf(t) { return t.hold ? (G.raft && G.raft.HOLD_COST) || {} : t.cost || {}; }
   function shortName(n) { return n.replace(' blok', '').replace('Dřevěný', 'Dřevo').replace('Kamenný', 'Kámen'); }
   function costText(cost) {
     const parts = [];
@@ -884,17 +886,19 @@
     if (!show) return;
     let key = B.selected + '|';
     const inv = G.inventory;
-    for (const t of TYPES) key += t.raft || !inv ? '1' : inv.hasAll(t.cost) ? '1' : '0';
+    for (const t of TYPES) key += t.raft || !inv ? '1' : inv.hasAll(costOf(t)) ? '1' : '0';
     if (key === lastPaletteKey) return;
     lastPaletteKey = key;
     TYPES.forEach((t, i) => {
       const el = paletteItems[i];
       el.classList.toggle('sel', i === B.selected);
-      el.classList.toggle('no', !t.raft && inv && !inv.hasAll(t.cost));
+      el.classList.toggle('no', !t.raft && inv && !inv.hasAll(costOf(t)));
     });
     const t = TYPES[B.selected];
     const keys = G.input.touchMode ? '' : '  (Z / X přepíná)';
-    nameEl.textContent = t.raft ? 'Základ voru – rozšiřování a opravy' + keys : t.name + ' – ' + costText(t.cost) + keys;
+    nameEl.textContent = t.raft ? 'Základ voru – rozšiřování a opravy' + keys
+      : t.hold ? 'Podpalubí – suchá místnost pod dílem voru, ' + costText(costOf(t)) + keys
+        : t.name + ' – ' + costText(t.cost) + keys;
     const sel = paletteItems[B.selected];
     if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
@@ -927,6 +931,7 @@
       }
       if (hammer && hammer.hideVisuals && hammer.shown) hammer.hideVisuals();
       if (t.fine) { updateFine(t, dt); return; }
+      if (t.hold) { updateHold(dt); return; }
       if (G.input.pressed('KeyR')) B.rotOffset = (B.rotOffset + 1) & 3;
       if (hammer && hammer.cooldown > 0) hammer.cooldown -= dt;
       if (hammer && hammer.animate) hammer.animate(dt);
@@ -950,6 +955,7 @@
       const t = TYPES[B.selected];
       if (t.raft) return hammer && hammer.primaryDown(slot);
       if (t.fine) { placeFine(t); return; }
+      if (t.hold) { buildHold(); return; }
       if (!aim.ok) { G.sfx('error', { volume: 0.4 }); return; }
       if (!G.inventory.hasAll(t.cost)) { G.sfx('error'); G.notify('Chybí ti: ' + costText(t.cost), 'warn'); return; }
       const b = addBlock(t.id, aim.px, aim.py, aim.pz, defaultRot(), false);
@@ -965,6 +971,7 @@
     secondaryDown(slot) {
       const t = TYPES[B.selected];
       if (t.fine) { removeFine(); return; }
+      if (t.hold) { unbuildHold(); return; }
       if (!t.raft && aim.hit) {
         const b = aim.hit;
         if (b.t.shape === 'door' && playerInside(b) && !b.open) return;
@@ -980,6 +987,62 @@
     secondaryUp(slot) { if (hammer) hammer.secondaryUp(slot); },
     hint() { return wrap.hintText; },
   };
+
+  // "Podpalubí": aim at a raft tile from the deck; LMB builds a hold under it, RMB takes it away.
+  const holdAim = { tile: null };
+  function updateHold(dt) {
+    if (hammer && hammer.cooldown > 0) hammer.cooldown -= dt;
+    if (hammer && hammer.animate) hammer.animate(dt);
+    const P = G.player, R = G.raft;
+    holdAim.tile = null;
+    if (P && P.eye) {
+      P.eye(_eye); P.forward(_dir);
+      const base = deckBase();
+      if (_dir.y < -1e-4 && _eye.y > base) {
+        const t = (base - _eye.y) / _dir.y;
+        if (t > 0 && t <= REACH) holdAim.tile = R.tileAt(_eye.x + _dir.x * t, _eye.z + _dir.z * t);
+      }
+    }
+    const tl = holdAim.tile, cost = costOf(TYPES[B.selected]);
+    const L = G.input.touchMode ? '●' : 'Levé tl.';
+    const Rb = G.input.touchMode ? '◐' : 'Pravé tl.';
+    let h;
+    if (!tl) h = 'Namiř na díl voru, pod který chceš podpalubí.';
+    else if (tl.hold) h = 'Pod tímto dílem už podpalubí je · ' + Rb + ': Zrušit (vrátí materiál)';
+    else if (G.inventory.hasAll(cost)) h = L + ': Postavit podpalubí pod tento díl (' + costText(cost) + ')';
+    else h = 'Podpalubí – chybí materiál (' + costText(cost) + ')';
+    if (ghost) {
+      if (tl) {
+        const T = G.C.TILE;
+        ghost.visible = true;
+        ghost.geometry = geos.cube;
+        ghost.position.set((tl.i + 0.5) * T, localBase() + 0.01, (tl.j + 0.5) * T);
+        ghost.rotation.set(0, 0, 0);
+        ghost.scale.set(T, 0.06, T);
+        ghostMat.color.setHex(tl.hold ? 0x7fc8ff : G.inventory.hasAll(cost) ? 0x6dff8e : 0xff5a4a);
+      } else ghost.visible = false;
+    }
+    if (outline) outline.visible = false;
+    wrap.hintText = h;
+    G.hud.setToolHint(h);
+  }
+  function buildHold() {
+    const tl = holdAim.tile, cost = costOf(TYPES[B.selected]);
+    if (!tl || tl.hold) { G.sfx('error', { volume: 0.4 }); return; }
+    if (!G.inventory.hasAll(cost)) { G.sfx('error'); G.notify('Chybí ti: ' + costText(cost), 'warn'); return; }
+    if (G.raft.addHold(tl)) {
+      wrap.swing();
+      G.notify('Podpalubí je hotové. Vstoupíš do něj poklopem v palubě.', 'good');
+    }
+  }
+  function unbuildHold() {
+    const tl = holdAim.tile;
+    if (!tl || !tl.hold) return;
+    const why = G.raft.removeHold(tl);
+    if (why) { G.sfx('error'); G.notify(why, 'warn'); return; }
+    wrap.swing();
+    G.sfx('break_wood', { volume: 0.6 });
+  }
 
   function updateFine(t, dt) {
     const I = G.input;

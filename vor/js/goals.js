@@ -181,7 +181,7 @@
     if (hasStructure('purifier')) step('cisticka', 0);
     if (has('udice')) step('ryba', 0);
     if (hasStructure('grill')) step('gril', 0);
-    if (hasStructure('sail')) step('plachta', 0);
+    if (hasStructure('sail') || hasStructure('bigsail')) step('plachta', 0);
     if (G.raft && G.raft.sailUp) step('plachta', 1);
     if (hasStructure('cannon')) complete(byId.kanon);
     const st = G.stats || {};
