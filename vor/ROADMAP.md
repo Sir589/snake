@@ -33,7 +33,11 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    listnaté stromy (větve → prkna, listy), borovice (větve) a banánovníky (nová potravina Banán); skalnaté ostrovy
    s borovicemi; jeskyně ve svahu se svítícími krystaly a truhlou s pokladem. Nové ostrovy: Jeskynní ostrov, Borový ostrov,
    Banánová zátoka, Dlouhý ostrov, Dvojhorka, Džunglový ostrov, Laločnatý ostrov. Test: `tools/scenarios/isles.mjs`.
-8. **Zvířata na voru**: kráva, slepice, ovce, koza, prase (krmení, produkty) a papoušek, kterého jde pojmenovat.
+8. ✅ **HOTOVO – Zvířata na voru**: kráva, slepice, ovce, koza, prase (krmení, produkty) a papoušek, kterého jde pojmenovat.
+   *Hotovo:* zvířata žijí na některých ostrovech (podle druhu ostrova), chytají se provazem (papoušek na banán nebo kokos),
+   z lišty se pustí na palubu a chodí po voru. Nakrmená dávají: kráva a koza mléko, ovce vlnu (→ provaz), prase lanýže,
+   slepice vejce (na grilu pečené vejce). Papoušek létá po voru, E = pojmenovat, mluví a varuje před žralokem a piráty.
+   Test: `tools/scenarios/animals.mjs`.
 9. **Pohled z první osoby u kanónu** (kanón už se otáčí o 360°).
 10. **Multiplayer** – vyžaduje server (např. WebSocket/WebRTC), synchronizaci voru a hráčů. Velký projekt.
 11. **Steam** – zabalit hru (Electron nebo Tauri), účet Steamworks (poplatek 100 USD za hru),

@@ -432,7 +432,7 @@
   }
   function makeMaterials(T) {
     for (const t of TYPES) {
-      if (t.raft) continue;
+      if (t.raft || t.hold) continue;
       const opts = { map: T[t.tex], color: t.color, flatShading: true, roughness: 0.9, metalness: 0 };
       if (t.tex === 'glass') Object.assign(opts, { transparent: true, depthWrite: false, side: THREE.DoubleSide, roughness: 0.2 });
       if (t.tex === 'lantern') Object.assign(opts, { emissive: 0xffb347, emissiveIntensity: 1.6, color: 0xffffff });

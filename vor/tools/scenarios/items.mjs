@@ -20,11 +20,11 @@ export default async (page, h) => {
 
     try {
       step('tables', () => {
-        eq(It.list.length, 38, 'item count');
-        eq(Object.keys(It.defs).length, 38, 'defs map size');
-        eq(It.recipes.length, 21, 'recipe count');
+        eq(It.list.length, 49, 'item count');
+        eq(Object.keys(It.defs).length, 49, 'defs map size');
+        eq(It.recipes.length, 22, 'recipe count');
         eq(JSON.stringify(It.categories), JSON.stringify(['Nástroje', 'Zbraně', 'Jídlo a voda', 'Vor', 'Materiály']), 'categories');
-        const cats = ['material', 'food', 'water', 'tool', 'weapon', 'placeable', 'ammo', 'treasure'];
+        const cats = ['material', 'food', 'water', 'tool', 'weapon', 'placeable', 'ammo', 'treasure', 'animal'];
         for (const d of It.list) {
           ok(d.name && d.icon && d.desc && d.color, 'def fields ' + d.id);
           ok(cats.includes(d.category), 'category ' + d.id);

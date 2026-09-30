@@ -20,7 +20,10 @@ export default async (page, h) => {
     await L.frames(2);
   };
   await settle();
+  const names = () => h.eval(() => { const m = {}; G.scene.traverse((o) => { const p = o.parent; const k = (p ? (p.name || p.type) + '/' : '') + (o.name || o.type); m[k] = (m[k] || 0) + 1; }); return m; });
+  const diffNames = (a, b) => { const d = []; for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if ((a[k] || 0) !== (b[k] || 0)) d.push(k + ' ' + (a[k] || 0) + '→' + (b[k] || 0)); return d.join(', '); };
   const fresh = await sceneStats();
+  const freshNames = await names();
   note('fresh game: ' + JSON.stringify(fresh));
 
   const mess = async () => {
@@ -93,6 +96,7 @@ export default async (page, h) => {
   await shot('gameover');
   await again();
   const r1 = await checkFresh(1);
+  const r1Names = await names();
 
   // --- round 2 ---
   await h.eval(() => G.debris.hookState && G.inventory.select(0));
@@ -102,7 +106,8 @@ export default async (page, h) => {
   const r2 = await checkFresh(2);
 
   for (const k of ['objects', 'meshes', 'lights', 'interactables', 'combat', 'ground', 'listeners']) {
-    ok(r1[k] === fresh[k] && r2[k] === fresh[k], k + ' back to the fresh value (' + fresh[k] + ' / ' + r1[k] + ' / ' + r2[k] + ')');
+    ok(r1[k] === fresh[k] && r2[k] === fresh[k], k + ' back to the fresh value (' + fresh[k] + ' / ' + r1[k] + ' / ' + r2[k] + ')' +
+      (k === 'objects' && r1[k] !== fresh[k] ? ' — ' + diffNames(freshNames, r1Names) : ''));
   }
   // Renderer memory: pooled objects (cannonballs, rings, boat, boarders…) are uploaded lazily the
   // first time they are drawn, and speech-bubble textures are cached per line, so the numbers

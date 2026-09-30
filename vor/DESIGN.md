@@ -537,6 +537,13 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Animals (ROADMAP 8).** js/animals.js (order 52): items of category `animal` (krava, koza, ovce, prase, slepice,
+  papousek; tool `animal` releases the held one on a free deck point), products mleko / vlna / lanyz / vejce
+  (→ vejce_pecene on the grill), recipe provaz_vlna. Raft animals are children of the raft group, wander between free
+  deck points, get hungry over 300 s, produce while fed; E feeds / collects. The parrot perches on equipment, E opens
+  a naming dialog (`G.setUIBlock('animal-name')`), and talks (speech bubble; on shark / pirates / island / storm /
+  new day). Wild animals are generated per island seed when an island comes within ~120 m (`G.animals.populate`),
+  caught ones are saved per seed. Events: animal:caught / released / fed / product, parrot:named / said.
 - **Island variety (ROADMAP 7).** createIsland() draws size class (`small|medium|large`, large hill radius 22–29 m) and
   outline `shape` (`round|long|bay|lobed|twin`) from a second random stream, then a flora `theme`
   (`tropical|jungle|pines|bananas`) with extra trees in `isl.trees` ({kind: broadleaf|pine|banana}, E → prkno/list or

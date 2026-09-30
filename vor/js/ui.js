@@ -114,6 +114,7 @@
     ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
     ['Jemné díly (prkénko, trám, sloup, půlblok)', K('G') + ' mřížka 25 / 50 cm, ' + K('R') + ' otočit', 'vyber díl v nabídce kladiva'],
     ['Dalekohled', 'podrž levé tlačítko, pravé = zvětšení 4× / 8×', '● podrž, ◐ zvětšení'],
+    ['Zvířata', 'na ostrově E = chytit (provaz), z lišty levé tl. = pustit na vor, E = nakrmit / sebrat', 'E, ●'],
     ['Potápění (ve vodě)', K('Q') + ' dolů, ' + K('Mezerník') + ' nahoru, plaveš kam se díváš', '⤓ dolů, ⤒ nahoru'],
     ['Podpalubí', 'kladivo → Podpalubí pod díl voru, dolů poklopem (' + K('E') + ')', 'kladivo → Podpalubí, E u poklopu'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
@@ -1090,6 +1091,7 @@
     if (!d) return '';
     if (d.food) return isDrink(d) ? 'Dvojklik: vypít.' : 'Dvojklik: sníst.';
     if (d.category === 'placeable') return 'Dej do lišty, vyber a klikni na vor.';
+    if (d.category === 'animal') return 'Dej do lišty, vyber a klikni na palubu – zvíře se tam usadí.';
     if (d.tool) return 'Dej do lišty a vyber číslem.';
     return '';
   }

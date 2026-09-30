@@ -104,6 +104,18 @@
     { tool: 'place', place: 'bed' });
   D('poklop', 'Poklop', '🕳️', 2, 'placeable', '#7a5634', 'Dvířka v palubě. Vedou dolů do podpalubí, které si postavíš z bloků.',
     { tool: 'place', place: 'hatch' });
+  // Animals (ROADMAP 8): caught on islands, let loose on the raft with the 'animal' tool (animals.js)
+  D('krava', 'Kráva', '🐄', 1, 'animal', '#f2efe6', 'Pusť ji na vor. Když ji nakrmíš listím, dá ti mléko.', { tool: 'animal' });
+  D('koza', 'Koza', '🐐', 1, 'animal', '#c9b08a', 'Pusť ji na vor. Nakrmená koza dává mléko.', { tool: 'animal' });
+  D('ovce', 'Ovce', '🐑', 1, 'animal', '#f5f2ea', 'Pusť ji na vor. Nakrmenou ovci ostříháš – vlna se hodí na provaz.', { tool: 'animal' });
+  D('prase', 'Prase', '🐖', 1, 'animal', '#f2b3b6', 'Pusť ho na vor. Nakrmené prase ti vyhrabe lanýž.', { tool: 'animal' });
+  D('slepice', 'Slepice', '🐔', 1, 'animal', '#fbf7ef', 'Pusť ji na vor. Nakrmená slepice snáší vejce.', { tool: 'animal' });
+  D('papousek', 'Papoušek', '🦜', 1, 'animal', '#e8463a', 'Veselý kamarád na vor. Můžeš ho pojmenovat a naučí se mluvit.', { tool: 'animal' });
+  D('mleko', 'Mléko', '🥛', 5, 'food', '#f7f4ec', 'Čerstvé mléko. Zažene žízeň i hlad.', { tool: 'consume', food: food(10, 28, 2) });
+  D('vejce', 'Syrové vejce', '🥚', 10, 'food', '#f3e7cf', 'Vejce od slepice. Na grilu z něj bude dobré jídlo.', { tool: 'consume', food: food(5, 0, -2), cookTo: 'vejce_pecene' });
+  D('vejce_pecene', 'Pečené vejce', '🍳', 10, 'food', '#f6d35a', 'Voňavé pečené vejce. Mňam!', { tool: 'consume', food: food(24, 0, 3), cooked: true });
+  D('vlna', 'Vlna', '🧶', 30, 'material', '#efe9dc', 'Měkká ovčí vlna. Upředeš z ní provaz.');
+  D('lanyz', 'Lanýž', '🍄', 10, 'food', '#8a6a4a', 'Vzácná houba, kterou vyhrabalo prase. Hodně zasytí.', { tool: 'consume', food: food(20, 0, 6) });
   D('koule', 'Dělová koule', '⚫', 20, 'ammo', '#2c2c30', 'Náboj do kanónu. Bum!');
 
   const COOK = Object.create(null), PURIFY = Object.create(null);
@@ -121,6 +133,7 @@
   }
   const recipes = [
     R('provaz', 'provaz', 1, { list: 2 }, 'Materiály'),
+    R('provaz_vlna', 'provaz', 2, { vlna: 1 }, 'Materiály', 'Provaz z vlny'),
     R('kladivo', 'kladivo', 1, { prkno: 3, plast: 2 }, 'Nástroje'),
     R('kelimek', 'kelimek', 1, { plast: 4 }, 'Jídlo a voda'),
     R('hak', 'hak', 1, { prkno: 2, plast: 4, provaz: 2 }, 'Nástroje'),
@@ -152,7 +165,7 @@
     categories: CATEGORIES,     // recipe categories, in crafting-menu order
     // Czech labels for def.category (tooltips)
     kindNames: { material: 'Materiál', food: 'Jídlo', water: 'Voda', tool: 'Nástroj', weapon: 'Zbraň',
-      placeable: 'Stavba na vor', ammo: 'Munice', treasure: 'Poklad' },
+      placeable: 'Stavba na vor', ammo: 'Munice', treasure: 'Poklad', animal: 'Zvíře' },
     def: (id) => defs[id] || null,
     name: (id) => (defs[id] ? defs[id].name : String(id)),
     icon: (id) => (defs[id] ? defs[id].icon : '❔'),
@@ -765,9 +778,9 @@
     return add(id, n, 'debug');
   };
   G.debug.giveAll = () => {
-    // Most useful first, so the important things fit into the 28 slots.
-    for (const d of list) if (d.category === 'material') add(d.id, 20, 'debug');
+    // Most useful first (tools, then materials), so the important things fit into the 28 slots.
     for (const d of list) if ((d.category === 'tool' || d.category === 'weapon') && countIn(slots, d.id) === 0) add(d.id, 1, 'debug');
+    for (const d of list) if (d.category === 'material') add(d.id, 20, 'debug');
     for (const d of list) if (d.category === 'placeable') add(d.id, 1, 'debug');
     add('koule', 10, 'debug');
     for (const d of list) if (d.category === 'water') add(d.id, 5, 'debug');

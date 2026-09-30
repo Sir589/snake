@@ -11,6 +11,8 @@ rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ost
   schody, okna, dveře, střecha, kámen, zábradlí, lucerny a barevné bloky. Levé tlačítko staví, pravé bourá (materiál se vrátí),
   R otáčí. Stavět jde do výšky až 16 bloků, takže i vícepatrové domy.
 - Jemné stavění: prkénka, trámy, sloupy a půlbloky na mřížce 25 cm (G přepne na 50 cm), R otáčí.
+- Zvířata: na ostrovech chytíš provazem kozy, ovce, prasata, krávy, slepice (papouška na banán), na voru je krmíš
+  a dávají mléko, vlnu, lanýže a vejce. Papouška pojmenuješ (E) a mluví.
 - Ostrovy jsou každý jiný: velikost, tvar, palmy / listnáče / borovice / banánovníky a někde jeskyně s pokladem.
 - Potápění: ve vodě Q = dolů, Mezerník = nahoru; na dně jsou korály, rybky a truhly s pokladem. Pozor na dech!
 - Bouře mají různou sílu: v silné bouři se vor naklání, láme nezpevněné díly a velké vlny smetou hráče od okraje.
