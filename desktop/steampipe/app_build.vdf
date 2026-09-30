@@ -1,0 +1,12 @@
+"AppBuild"
+{
+	"AppID"	"CISLO_APP_ID"
+	"Desc"	"Širé moře – Windows build"
+	"ContentRoot"	"..\dist\win-unpacked\"
+	"BuildOutput"	".\output\"
+	"SetLive"	""
+	"Depots"
+	{
+		"CISLO_DEPOT_ID"	"depot_build.vdf"
+	}
+}

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0d3b47"/>
+      <stop offset="0.55" stop-color="#2f7f8c"/>
+      <stop offset="1" stop-color="#f0c987"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b8a93"/>
+      <stop offset="1" stop-color="#06222b"/>
+    </linearGradient>
+    <linearGradient id="sail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#fff6e3"/>
+      <stop offset="1" stop-color="#e6cf9f"/>
+    </linearGradient>
+    <clipPath id="tile"><rect x="16" y="16" width="480" height="480" rx="96"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect x="16" y="16" width="480" height="480" fill="url(#sky)"/>
+    <!-- sun -->
+    <circle cx="372" cy="292" r="62" fill="#ffd98a"/>
+    <circle cx="372" cy="292" r="84" fill="#ffd98a" opacity="0.25"/>
+    <!-- sea -->
+    <path d="M16 318 Q60 302 104 318 T192 318 T280 318 T368 318 T456 318 T544 318 V496 H16 Z" fill="url(#sea)"/>
+    <path d="M16 318 Q60 302 104 318 T192 318 T280 318 T368 318 T456 318 T544 318" fill="none" stroke="#bfe8e2" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+    <path d="M300 340 h120" stroke="#ffe6a8" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+    <path d="M330 358 h70" stroke="#ffe6a8" stroke-width="5" stroke-linecap="round" opacity="0.4"/>
+    <!-- mast + sail -->
+    <rect x="216" y="92" width="16" height="276" rx="5" fill="#5a3b22"/>
+    <path d="M234 104 C300 128 344 196 352 300 L234 300 Z" fill="url(#sail)" stroke="#6b4a2f" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M214 132 C176 170 158 236 160 300 L214 300 Z" fill="#e6cf9f" stroke="#6b4a2f" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M262 170 L322 176 M258 230 L338 234" stroke="#c9ab74" stroke-width="5" stroke-linecap="round"/>
+    <!-- flag -->
+    <path d="M232 92 L278 104 L232 118 Z" fill="#e8643c"/>
+    <!-- raft -->
+    <g stroke="#3d2716" stroke-width="5" stroke-linejoin="round">
+      <rect x="104" y="318" width="264" height="30" rx="12" fill="#8a5d36"/>
+      <rect x="116" y="346" width="240" height="26" rx="12" fill="#6b4a2f"/>
+    </g>
+    <g stroke="#3d2716" stroke-width="4">
+      <path d="M150 320 v26 M196 320 v26 M242 320 v26 M288 320 v26 M334 320 v26"/>
+    </g>
+    <path d="M140 324 l12 20 M186 324 l12 20 M324 324 l12 20" stroke="#e6cf9f" stroke-width="5" stroke-linecap="round"/>
+    <!-- splash / foam around the raft -->
+    <path d="M78 380 Q120 364 164 380 T250 380 T336 380 T410 378" fill="none" stroke="#e9f1ea" stroke-width="8" stroke-linecap="round"/>
+    <path d="M60 424 Q110 408 160 424 T260 424" fill="none" stroke="#bfe8e2" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+    <path d="M300 440 Q350 424 400 440 T480 440" fill="none" stroke="#bfe8e2" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <!-- gull -->
+    <path d="M110 150 q18 -16 34 0 q16 -16 34 0" fill="none" stroke="#e9f1ea" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <rect x="16" y="16" width="480" height="480" rx="96" fill="none" stroke="#d9a441" stroke-width="10"/>
+</svg>

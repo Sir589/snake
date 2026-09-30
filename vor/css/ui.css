@@ -39,6 +39,8 @@
 }
 .ui-root *, .ui-root *::before, .ui-root *::after { box-sizing: border-box; }
 .ui-root .is-hidden { display: none !important; }
+/* Buttons that only make sense in the desktop (Electron) build, e.g. "Ukončit hru". */
+body:not(.is-desktop) .ui-root .desktop-only { display: none !important; }
 .ui-root button { font: inherit; color: inherit; cursor: pointer; }
 .ui-root .ico { width: 1em; height: 1em; display: block; flex: none; }
 .ui-root kbd {

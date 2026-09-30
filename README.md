@@ -11,6 +11,9 @@ rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ost
   schody, okna, dveře, střecha, kámen, zábradlí, lucerny a barevné bloky. Levé tlačítko staví, pravé bourá (materiál se vrátí),
   R otáčí. Stavět jde do výšky až 16 bloků, takže i vícepatrové domy.
 - Mobil: joystick vlevo, tažení prstem vpravo = rozhlížení, tlačítka pro akce.
+- **Verze pro Windows (Steam):** složka `desktop/` (Electron). Hotová hra: `desktop/dist/win-unpacked/SireMore.exe`.
+  Sestavení: `cd desktop`, `npm install`, `npm run build`. Postup vydání na Steamu: `desktop/STEAM.md`.
+  F11 = celá obrazovka, v menu je tlačítko „Ukončit hru“.
 - Návrh a rozhraní modulů: `vor/DESIGN.md`. Testy: `node vor/tools/run-all.mjs` (potřebuje Playwright).
 
 ---

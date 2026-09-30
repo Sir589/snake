@@ -1,0 +1,73 @@
+{
+  "name": "siremore",
+  "productName": "SireMore",
+  "version": "1.0.0",
+  "description": "Širé moře – hra o přežití na voru",
+  "main": "main.js",
+  "private": true,
+  "author": "sir589",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "icons": "node tools/make-icons.mjs",
+    "build": "electron-builder --win dir",
+    "build:installer": "electron-builder --win nsis -c.asar=true -c.win.signAndEditExecutable=true",
+    "build:signed": "electron-builder --win dir -c.asar=true -c.win.signAndEditExecutable=true"
+  },
+  "build": {
+    "appId": "cz.sir589.siremore",
+    "productName": "SireMore",
+    "copyright": "© 2026 sir589",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "steam.js",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../vor",
+        "to": "game",
+        "filter": [
+          "index.html",
+          "js/**",
+          "css/**",
+          "lib/**",
+          "fonts/**"
+        ]
+      }
+    ],
+    "extraFiles": [
+      {
+        "from": "steam_appid.txt",
+        "to": "steam_appid.txt"
+      }
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "icon": "build/icon.ico",
+      "executableName": "SireMore",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Širé moře"
+    },
+    "asar": false
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
+  }
+}

@@ -265,6 +265,7 @@
           '<button type="button" class="btn" id="btn-new">Nová hra</button>' +
           '<button type="button" class="btn" id="btn-menu-help">Ovládání</button>' +
           '<button type="button" class="btn" id="btn-menu-settings">Nastavení</button>' +
+          '<button type="button" class="btn desktop-only" id="btn-menu-quit">Ukončit hru</button>' +
         '</nav>' +
         '<p class="menu-foot" id="menu-foot">Hra se sama ukládá. Pauza: Esc.</p>' +
       '</div>' +
@@ -279,6 +280,7 @@
           '<button type="button" class="btn" id="btn-pause-help">Ovládání</button>' +
           '<button type="button" class="btn" id="btn-pause-settings">Nastavení</button>' +
           '<button type="button" class="btn" id="btn-save-quit">Uložit a do menu</button>' +
+          '<button type="button" class="btn desktop-only" id="btn-pause-quit">Uložit a ukončit hru</button>' +
         '</nav>' +
       '</div>' +
     '</div>' +
@@ -1538,7 +1540,7 @@
     setCls(E['btn-new'], 'btn-primary', !info);
     const persistent = !G.save || G.save.persistent !== false;
     setText($('menu-foot'), !persistent ? 'Ukládání tu nefunguje – po zavření stránky se postup ztratí.'
-      : coarse() ? 'Hra se sama ukládá.' : 'Hra se sama ukládá. Pauza: Esc.');
+      : coarse() ? 'Hra se sama ukládá.' : G.desktop && G.desktop.available ? 'Hra se sama ukládá. Pauza: Esc. Celá obrazovka: F11.' : 'Hra se sama ukládá. Pauza: Esc.');
     newConfirmUntil = 0;
     setText(E['btn-new'], 'Nová hra');
   }
@@ -1703,6 +1705,8 @@
     click('btn-pause-help', () => pushOverlay('help'));
     click('btn-pause-settings', () => pushOverlay('settings'));
     click('btn-save-quit', () => { sfx('ui_click'); G.save.write(); G.toMenu(); });
+    click('btn-menu-quit', () => { sfx('ui_click'); if (G.desktop) G.desktop.quit(); });
+    click('btn-pause-quit', () => { sfx('ui_click'); if (G.desktop) G.desktop.quit(); });
     // game over
     click('btn-again', () => { sfx('ui_click'); G.newGame(); });
     click('btn-over-menu', () => { sfx('ui_click'); G.toMenu(); });

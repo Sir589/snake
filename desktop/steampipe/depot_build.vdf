@@ -1,0 +1,12 @@
+"DepotBuild"
+{
+	"DepotID"	"CISLO_DEPOT_ID"
+	"FileMapping"
+	{
+		"LocalPath"	"*"
+		"DepotPath"	"."
+		"Recursive"	"1"
+	}
+	// steam_appid.txt je jen pro testování mimo Steam – do obchodu ho nenahráváme
+	"FileExclusion"	"steam_appid.txt"
+}
