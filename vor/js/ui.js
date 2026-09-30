@@ -109,7 +109,7 @@
     ['Sebrat, otevřít, použít', K('E'), 'E'],
     ['Rychlá lišta', K('1') + '–' + K('8') + ' nebo kolečko myši', 'klepni na políčko'],
     ['Inventář a výroba', K('Tab') + ' nebo ' + K('I') + ', výroba ' + K('C'), '🎒'],
-    ['Otočit stavbu', K('R') + ' nebo pravé tlačítko myši', '◐ nebo ↻'],
+    ['Otočit stavbu (vybavení po 15°)', K('R') + ' nebo pravé tlačítko myši, zpět ' + K('Shift') + '+' + K('R'), '◐ nebo ↻'],
     ['Stavění z bloků (s kladivem)', K('Z') + ' / ' + K('X') + ' vybrat blok, levé tl. postavit, pravé tl. rozbít', 'klepni na blok v nabídce, ● postavit, ◐ rozbít'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
     ['Nápověda', K('H'), '—'],

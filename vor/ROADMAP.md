@@ -2,9 +2,11 @@
 
 Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol pro další relaci.
 
-1. **Volné umísťování vybavení** (gril, vlajka, síť, truhla…): položit kamkoli – na libovolný blok, na kraj
+1. ✅ **HOTOVO – Volné umísťování vybavení** (gril, vlajka, síť, truhla…): položit kamkoli – na libovolný blok, na kraj
    i doprostřed dílu, s otáčením po malých krocích; nesmí jít ani napůl do zdi (kolize s bloky z `build.js`).
-   Teď je vybavení vázané na střed dílu voru (`raft.js` – `placeStructure`, nástroj `place`).
+   *Hotovo:* vybavení stojí kdekoli na palubě i na blocích, otáčí se po 15° (R / Shift+R, držením plynule),
+   nesmí do bloků ani do jiného vybavení, samo se přisune ke zdi; když zmizí podlaha, spadne níž nebo do moře.
+   Test: `tools/scenarios/placement.mjs`.
 2. **Jemnější stavění**: vedle 1m bloků i prkna, trámy a sloupy s polovičním/čtvrtinovým krokem mřížky.
 3. **Lepší plachta** přes celý vor (větší rychlost), **stožár, dalekohled** (přiblížení kamery), **postel**
    (přespat noc), **podpalubí** (bloky pod úrovní paluby).

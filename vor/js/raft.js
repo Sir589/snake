@@ -696,7 +696,7 @@
   }
 
   function removeTileInternal(t) {
-    if (t.structure) removeStructure(t.structure, false);
+    for (let k = structures.length - 1; k >= 0; k--) if (structures[k] && structures[k].tile === t) removeStructure(structures[k], false);
     bucketRemove(t);
     t.animating = false;
     tiles.delete(skey(t.i, t.j));
@@ -721,10 +721,17 @@
   function destroyTile(t, source) {
     if (!isLive(t)) return false;
     const c = tileCenter(t, new THREE.Vector3());
-    const s = t.structure;
-    if (s) {
-      if (!quiet) spillStructure(s, c);
-      removeStructure(s, false);
+    // things standing on the deck of this tile go into the sea; things up on blocks stay for now
+    // (checkSupport drops them if their floor goes too)
+    let lost = 0;
+    for (let k = structures.length - 1; k >= 0; k--) {
+      const s = structures[k];
+      if (!s || s.tile !== t) continue;
+      if (s.y < 0.05) {
+        if (!quiet) spillStructure(s, c);
+        removeStructure(s, false);
+        lost++;
+      } else setTile(s, nearestTile(s.x, s.z, t));
     }
     removeTileInternal(t);
     if (!quiet) {
@@ -732,7 +739,7 @@
       fxCall('splash', _v.set(c.x, 0, c.z), 1.6);
       snd('break_wood', c);
       snd('splash_big', c, 0.7);
-      G.notify((DESTROY_TEXT[source] || 'Kus voru se rozpadl!') + (s ? ' Věci z něj plavou ve vodě – chyť je hákem!' : ''), 'danger');
+      G.notify((DESTROY_TEXT[source] || 'Kus voru se rozpadl!') + (lost ? ' Věci z něj plavou ve vodě – chyť je hákem!' : ''), 'danger');
       G.events.emit('tile:destroyed', { i: t.i, j: t.j, source });
     }
     return true;
@@ -860,36 +867,297 @@
     return null;
   }
 
+  // ---------------------------------------------------------------------------
+  // Free placement. Every structure has its own position (s.x, s.z on the raft; s.y = metres above
+  // the deck top) and angle (s.angle, radians, 15° steps when placed by hand; s.rotation is the same
+  // angle in quarter turns, fractional allowed). Its footprint — a rotated rectangle — must not
+  // overlap blocks from build.js or other structures and must stand level on the deck or on block
+  // tops. s.tile is the raft tile under it (damage to that tile can throw it into the sea); a tile
+  // may carry several structures (tile.structure is the first of them, for older callers).
+  // ---------------------------------------------------------------------------
+  const ANGLE_STEP = PI / 12;                   // 15°
+  const SNAP = 0.1;                             // placement grid in metres
+  const SLACK = 0.02;                           // touching is fine, overlapping is not
+  // Local footprint rect [x0, x1, z0, z1] (structure space, +z = front), height h, optional support
+  // rect `sup` for parts that hang over the water (the net's netting, the anchor's roller), and
+  // `deckOnly` for things that must stand right on the deck (they reach down into the sea).
+  const FOOT = {
+    purifier: { r: [-0.47, 0.47, -0.34, 0.34], h: 1 },
+    grill: { r: [-0.52, 0.62, -0.31, 0.31], h: 0.56 },
+    chest: { r: [-0.47, 0.47, -0.31, 0.31], h: 0.58 },
+    net: { r: [-0.93, 0.93, 0.23, 1.09], h: 1.35, sup: [-0.9, 0.9, 0.23, 0.75], deckOnly: true },
+    sail: { r: [-0.45, 0.45, -0.45, 0.45], h: 4.5 },
+    anchor: { r: [-0.5, 0.66, -0.25, 1.1], h: 0.8, sup: [-0.5, 0.66, -0.25, 0.7], deckOnly: true },
+    flag: { r: [-0.2, 0.2, -0.2, 0.2], h: 2.4 },
+    cannon: { r: [-0.7, 0.7, -0.7, 0.7], h: 0.9 },
+  };
+  const FIT_TEXT = {
+    deck: 'Tohle patří přímo na palubu voru, ne na blok.',
+    wall: 'Nevejde se to – vadí tu stěna nebo blok.',
+    taken: 'Tady už něco stojí.',
+    floor: 'Tady to nestojí rovně. Potřebuje to pevnou podlahu.',
+  };
+  const footCache = Object.create(null);
+  const _oA = {}, _oB = {}, _oBox = { x: 0, z: 0, ax: 1, az: 0, bx: 0, bz: 1, hx: 0.5, hz: 0.5, y0: 0, y1: 1 };
+
+  function footprint(type) {
+    let f = footCache[type];
+    if (f) return f;
+    const def = structureDefs[type];
+    f = (def && def.footprint) || FOOT[type];
+    if (!f) {
+      // a type registered by another module without a footprint: measure its preview model once
+      let r = [-0.5, 0.5, -0.5, 0.5], h = 1;
+      const inst = makeInstanceForPreview(type, false);
+      if (inst) {
+        inst.obj.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(inst.obj);
+        if (!box.isEmpty()) { r = [box.min.x, box.max.x, box.min.z, box.max.z]; h = Math.max(0.2, box.max.y); }
+      }
+      f = { r, h };
+    }
+    f = { r: f.r, h: f.h, sup: f.sup || f.r, deckOnly: !!f.deckOnly };
+    footCache[type] = f;
+    return f;
+  }
+  function normAngle(a) {
+    a = Number(a) || 0;
+    a = ((a % TAU) + TAU) % TAU;
+    return a > TAU - 1e-9 ? 0 : a;
+  }
+  function rotFromAngle(a) {
+    const q = a / HALF_PI, r = Math.round(q);
+    return Math.abs(q - r) < 1e-6 ? r % 4 : q;
+  }
+  // Rotated rect of a structure footprint (or of its `rect`) at x/z, y (deck-relative), angle.
+  function obbOf(type, x, y, z, angle, rect, out) {
+    const f = footprint(type), r = rect || f.r;
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const mx = (r[0] + r[1]) / 2, mz = (r[2] + r[3]) / 2;
+    out.x = x + mx * c + mz * s; out.z = z - mx * s + mz * c;
+    out.ax = c; out.az = -s;                    // local +x in the raft plane
+    out.bx = s; out.bz = c;                     // local +z
+    out.hx = (r[1] - r[0]) / 2; out.hz = (r[3] - r[2]) / 2;
+    out.y0 = y; out.y1 = y + f.h;
+    return out;
+  }
+  function projR(o, nx, nz) { return o.hx * Math.abs(o.ax * nx + o.az * nz) + o.hz * Math.abs(o.bx * nx + o.bz * nz); }
+  function separated(A, B, dx, dz, nx, nz) { return Math.abs(dx * nx + dz * nz) >= projR(A, nx, nz) + projR(B, nx, nz) - SLACK; }
+  function obbOverlap(A, B) {
+    const dx = B.x - A.x, dz = B.z - A.z;
+    return !(separated(A, B, dx, dz, A.ax, A.az) || separated(A, B, dx, dz, A.bx, A.bz) ||
+      separated(A, B, dx, dz, B.ax, B.az) || separated(A, B, dx, dz, B.bx, B.bz));
+  }
+  function hitsBlocks(o) {
+    const Bd = G.build;
+    if (!Bd || !Bd.blocks || !Bd.blocks.size || typeof Bd.blockAt !== 'function') return false;
+    const ex = o.hx * Math.abs(o.ax) + o.hz * Math.abs(o.bx), ez = o.hx * Math.abs(o.az) + o.hz * Math.abs(o.bz);
+    const x0 = Math.floor(o.x - ex), x1 = Math.floor(o.x + ex), z0 = Math.floor(o.z - ez), z1 = Math.floor(o.z + ez);
+    const y0 = Math.max(0, Math.floor(o.y0)), y1 = Math.floor(o.y1 - 0.01);
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        for (let y = y0; y <= y1; y++) {
+          const b = Bd.blockAt(x, y, z);
+          if (!b) continue;
+          const lo = b.y, hi = b.y + Bd.solidTop(b);
+          if (hi <= o.y0 + 0.01 || lo >= o.y1 - 0.01) continue;
+          _oBox.x = x + 0.5; _oBox.z = z + 0.5; _oBox.hx = _oBox.hz = 0.5;
+          if (obbOverlap(o, _oBox)) return true;
+        }
+      }
+    }
+    return false;
+  }
+  function hitsStructures(o, ignore) {
+    for (let k = 0; k < structures.length; k++) {
+      const s = structures[k];
+      if (s === ignore) continue;
+      obbOf(s.type, s.x, s.y, s.z, s.angle, null, _oB);
+      if (_oB.y1 <= o.y0 + 0.01 || _oB.y0 >= o.y1 - 0.01) continue;
+      if (obbOverlap(o, _oB)) return true;
+    }
+    return false;
+  }
+  // Highest floor (deck or block top) at x/z that is not above maxY; deck-relative, -Infinity if none.
+  function surfaceAt(x, z, maxY) {
+    let best = -Infinity;
+    if (maxY >= 0 && grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE)))) best = 0;
+    const Bd = G.build;
+    if (Bd && Bd.blocks && Bd.blocks.size && typeof Bd.heightAt === 'function') {
+      const base = raft.deckY();
+      const h = Bd.heightAt(x, z, base + maxY);
+      if (h !== null && h - base > best) best = h - base;
+    }
+    return best;
+  }
+  function localToRaft(x, z, angle, lx, lz, out) {
+    const c = Math.cos(angle), s = Math.sin(angle);
+    out.x = x + lx * c + lz * s; out.z = z - lx * s + lz * c;
+    return out;
+  }
+  const _pt = { x: 0, z: 0 };
+  // Every sample of the support rect has a floor at height y (±6 cm): stands level, no overhang.
+  function supported(type, x, y, z, angle) {
+    const r = footprint(type).sup;
+    for (let a = 0; a < 3; a++) {
+      for (let b = 0; b < 3; b++) {
+        const lx = r[0] + (r[1] - r[0]) * (0.08 + 0.42 * a), lz = r[2] + (r[3] - r[2]) * (0.08 + 0.42 * b);
+        localToRaft(x, z, angle, lx, lz, _pt);
+        const top = surfaceAt(_pt.x, _pt.z, y + 0.06);
+        if (top < y - 0.06) return false;
+      }
+    }
+    return true;
+  }
+  // '' when the structure fits there, else a FIT_TEXT key.
+  function fitReason(type, x, y, z, angle, ignore) {
+    const f = footprint(type);
+    if (f.deckOnly && y > 0.05) return 'deck';
+    obbOf(type, x, y, z, angle, null, _oA);
+    if (hitsBlocks(_oA)) return 'wall';
+    if (hitsStructures(_oA, ignore)) return 'taken';
+    if (!supported(type, x, y, z, angle)) return 'floor';
+    return '';
+  }
+  // Is the front of the structure (local +z, just past its footprint) over open water?
+  function frontOverWater(type, x, y, z, angle) {
+    const f = footprint(type);
+    localToRaft(x, z, angle, (f.r[0] + f.r[1]) / 2, f.r[3] + 0.3, _pt);
+    return surfaceAt(_pt.x, _pt.z, y + 0.5) === -Infinity;
+  }
+  // Quarter turn whose front looks at the nearest open water from x/z (for nets, anchors, cannons).
+  function waterAngle(x, z) {
+    let best = 0, bd = Infinity;
+    for (let q = 0; q < 4; q++) {
+      const a = q * HALF_PI, dx = Math.sin(a), dz = Math.cos(a);
+      for (let d = 0.25; d <= 4 && d < bd; d += 0.25) {
+        if (surfaceAt(x + dx * d, z + dz * d, 0.06) === -Infinity) { if (d < bd) { bd = d; best = a; } break; }
+      }
+    }
+    return best;
+  }
+  function nearestTile(x, z, except) {
+    const t = grid.get(nkey(Math.floor(x / TILE), Math.floor(z / TILE)));
+    if (t && t !== except) return t;
+    let best = null, bd = Infinity;
+    for (const u of tiles.values()) {
+      if (u === except) continue;
+      const dx = (u.i + 0.5) * TILE - x, dz = (u.j + 0.5) * TILE - z, d = dx * dx + dz * dz;
+      if (d < bd) { bd = d; best = u; }
+    }
+    return best;
+  }
+  function tileStructureFor(tile, except) {
+    for (const s of structures) if (s !== except && s.tile === tile) return s;
+    return null;
+  }
+  function setTile(s, t) {
+    if (s.tile === t) return;
+    if (s.tile && s.tile.structure === s) s.tile.structure = tileStructureFor(s.tile, s);
+    s.tile = t;
+    if (t && !t.structure) t.structure = s;
+  }
+  // Point of a structure footprint (any height) → the structure, or null.
+  function structureAtPoint(x, z) {
+    for (const s of structures) {
+      obbOf(s.type, s.x, s.y, s.z, s.angle, null, _oB);
+      const dx = x - _oB.x, dz = z - _oB.z;
+      if (Math.abs(dx * _oB.ax + dz * _oB.az) <= _oB.hx && Math.abs(dx * _oB.bx + dz * _oB.bz) <= _oB.hz) return s;
+    }
+    return null;
+  }
+  // Does any structure overlap the box (x0..x1, y0..y1 deck-relative, z0..z1)? Used by build.js.
+  function structureInBox(x0, x1, y0, y1, z0, z1) {
+    const box = { x: (x0 + x1) / 2, z: (z0 + z1) / 2, ax: 1, az: 0, bx: 0, bz: 1, hx: (x1 - x0) / 2, hz: (z1 - z0) / 2 };
+    for (const s of structures) {
+      obbOf(s.type, s.x, s.y, s.z, s.angle, null, _oB);
+      if (_oB.y1 <= y0 + 0.01 || _oB.y0 >= y1 - 0.01) continue;
+      if (obbOverlap(_oB, box)) return s;
+    }
+    return null;
+  }
+  // Structures whose floor vanished (a block was knocked out, a tile sank) drop onto the next
+  // floor below, or into the sea when there is none.
+  let supportT = 0;
+  function checkSupport(dt) {
+    supportT -= dt;
+    if (supportT > 0 || !structures.length) return;
+    supportT = 0.25;
+    for (let k = structures.length - 1; k >= 0; k--) {
+      const s = structures[k];
+      if (!s || !s.object) continue;
+      const top = surfaceAt(s.x, s.z, s.y + 0.06);
+      if (top >= s.y - 0.06) {
+        if (!isLive(s.tile)) setTile(s, nearestTile(s.x, s.z));
+        continue;
+      }
+      if (top === -Infinity) {
+        const def = structureDefs[s.type];
+        const p = toWorld(s, 0, 0, 0, new THREE.Vector3());
+        p.y = 0;
+        spillStructure(s, p);
+        fxCall('splash', p, 1.2);
+        snd('splash_big', p, 0.6);
+        G.notify('Vybavení spadlo do moře (' + ((def && def.name) || s.type).toLowerCase() + '). Chyť ho hákem!', 'warn');
+        removeStructure(s, false);
+        continue;
+      }
+      s.y = Math.max(0, top);
+      s.object.position.y = G.C.DECK_Y + s.y;
+      s.object.updateMatrixWorld(true);
+      setTile(s, nearestTile(s.x, s.z));
+      snd('break_wood', toWorld(s, 0, 0.3, 0, _v), 0.35);
+    }
+  }
+
   function markShadows(obj) {
     obj.traverse((o) => {
       if (o.isMesh && !o.userData.noShadow && !(o.material && o.material.transparent)) { o.castShadow = true; o.receiveShadow = true; }
     });
   }
 
-  // placeStructure(type, tile, rotation[, savedData]) -> s | null. `rotation` = quarter turns 0..3.
-  function placeStructure(type, tile, rotation, savedData) {
+  // placeStructure(type, tile, rotation[, savedData[, at]]) -> s | null.
+  // Without `at` the structure goes to the tile centre, `rotation` = quarter turns 0..3.
+  // With at = { x, z, y?, angle? } it goes exactly there (y = metres above the deck top, angle in
+  // radians); `tile` is then ignored (the tile under the point is used).
+  // Outside reset/load it must fit (no overlap with blocks or other structures, level floor).
+  function placeStructure(type, tile, rotation, savedData, at) {
     const def = structureDefs[type];
     if (!def) return null;
-    tile = resolveTile(tile);
-    if (!tile || tile.structure) return null;
-    const rot = normRot(rotation);
+    let x, y, z, angle;
+    if (at && Number.isFinite(at.x) && Number.isFinite(at.z)) {
+      x = at.x; z = at.z;
+      y = Number.isFinite(at.y) ? Math.max(0, at.y) : 0;
+      angle = Number.isFinite(at.angle) ? at.angle : normRot(rotation) * HALF_PI;
+      tile = nearestTile(x, z);
+    } else {
+      tile = resolveTile(tile);
+      if (!tile) return null;
+      x = (tile.i + 0.5) * TILE; z = (tile.j + 0.5) * TILE; y = 0;
+      angle = normRot(rotation) * HALF_PI;
+    }
+    if (!tile) return null;
+    angle = normAngle(angle);
+    const step = Math.round(angle / ANGLE_STEP) * ANGLE_STEP;      // saves round the angle: snap back to 15°
+    if (Math.abs(step - angle) < 2e-3) angle = normAngle(step);
+    if (!quiet && fitReason(type, x, y, z, angle, null)) return null;
     let data = {};
     if (typeof def.data === 'function') { try { data = def.data() || {}; } catch (err) { data = {}; } }
-    const s = { type, tile, object: null, data, rotation: rot };
+    const s = { type, tile, object: null, data, rotation: rotFromAngle(angle), x, y, z, angle };
     const hasSaved = savedData !== undefined && savedData !== null;
     if (hasSaved && !def.load && typeof savedData === 'object') Object.assign(s.data, savedData);
     let obj = null;
     try { obj = def.create(s); } catch (err) { console.error('[raft] create ' + type, err); }
     if (!obj || !obj.isObject3D) return null;
     s.object = obj;
-    obj.position.set((tile.i + 0.5) * TILE, G.C.DECK_Y, (tile.j + 0.5) * TILE);
-    obj.rotation.y = rot * HALF_PI;
+    obj.position.set(x, G.C.DECK_Y + y, z);
+    obj.rotation.y = angle;
     obj.userData.raftStructure = s;
     if (!def.ownShadows) markShadows(obj);
     group.add(obj);
     obj.updateMatrixWorld(true);                  // aimable right away, before the next render
     structureObjects.push(obj);
-    tile.structure = s;
+    if (!tile.structure) tile.structure = s;
     structures.push(s);
     if (hasSaved && def.load) {
       try { def.load(s, savedData); } catch (err) { console.error('[raft] load ' + type, err); }
@@ -942,7 +1210,7 @@
 
   function refundStructure(s) {
     const def = structureDefs[s.type];
-    const pos = tileCenter(s.tile, new THREE.Vector3());
+    const pos = toWorld(s, 0, 0.3, 0, new THREE.Vector3());
     const I = G.inventory;
     if (s.data && s.data.storage && Array.isArray(s.data.storage.slots)) {
       I.takeAll(s.data.storage, 'refund');
@@ -983,7 +1251,7 @@
     }
     if (s._own) { for (const r of s._own) if (r && r.dispose) r.dispose(); s._own = null; }
     structures.splice(idx, 1);
-    if (s.tile && s.tile.structure === s) s.tile.structure = null;
+    if (s.tile && s.tile.structure === s) s.tile.structure = tileStructureFor(s.tile, s);
     updateFlags();
     if (!quiet) G.events.emit('structure:removed', { type: s.type, refund: !!refund });
     return true;
@@ -1486,7 +1754,8 @@
     const R2 = NET_RADIUS * NET_RADIUS;
     for (const s of structures) {
       if (s.type !== 'net' || !storageFree(s.data.storage)) continue;
-      const cx = (s.tile.i + 0.5) * TILE, cz = (s.tile.j + 0.5) * TILE;
+      toGroup(s, 0, 0, 0.66, _v2);
+      const cx = _v2.x, cz = _v2.z;
       for (let k = L.length - 1; k >= 0; k--) {
         const d = L[k];
         if (!d || d.hooked || d.attached || d.collected || d.dead || d.removed || d.alive === false) continue;
@@ -2279,26 +2548,76 @@
     return !grid.has(nkey(tile.i + d[0], tile.j + d[1]));
   }
 
+  // March the eye ray until it enters the deck or a block. Returns 'top' when it came in through a
+  // floor / block top (out = that point, placer.top = floor height, deck-relative), 'side' when it
+  // hit a wall or the deck edge, or null when nothing is within range.
+  function solidTopAt(t, base) {
+    const x = _eye.x + _dir.x * t, ly = _eye.y + _dir.y * t - base, z = _eye.z + _dir.z * t;
+    const Bd = G.build;
+    if (Bd && typeof Bd.solidAt === 'function') { const top = Bd.solidAt(x, ly, z); if (top !== null) return top; }
+    if (ly <= 0 && ly > -0.45 && grid.has(nkey(Math.floor(x / TILE), Math.floor(z / TILE)))) return 0;
+    return null;
+  }
+  function aimFloor(range, out) {
+    const base = raft.deckY();
+    let prev = 0.2;
+    for (let t = 0.2; t <= range; t += 0.1) {
+      if (_dir.y < 0 && _eye.y + _dir.y * t - base < -0.6) return null;
+      if (solidTopAt(t, base) === null) { prev = t; continue; }
+      let lo = prev, hi = t;
+      for (let k = 0; k < 9; k++) { const m = (lo + hi) / 2; if (solidTopAt(m, base) === null) lo = m; else hi = m; }
+      const top = solidTopAt(hi, base);
+      out.copy(_dir).multiplyScalar(hi).add(_eye);
+      const ly = out.y - base;
+      placer.top = top;
+      return top - ly < 0.05 ? 'top' : 'side';
+    }
+    return null;
+  }
+  const snapM = (v) => Math.round(v / SNAP) / (1 / SNAP);   // exact decimals, no 2.4000000000000004
+  const _nudged = { x: 0, z: 0 };
+  // The aimed spot is blocked: look for the closest free spot within half a metre (so things can
+  // be pushed right up against a wall or another piece of furniture).
+  function nudge(type, x, y, z, angle, out) {
+    for (let r = 0.1; r <= 0.51; r += 0.1) {
+      const n = r < 0.15 ? 8 : 16;
+      for (let k = 0; k < n; k++) {
+        const a = (k / n) * TAU;
+        const nx = snapM(x + Math.cos(a) * r), nz = snapM(z + Math.sin(a) * r);
+        if (!fitReason(type, nx, y, nz, angle, null)) { out.x = nx; out.z = nz; return true; }
+      }
+    }
+    return false;
+  }
+
   const placer = {
     viewModel: null,
     inner: null,
     miniObj: null,
     itemId: null,
     type: null,
-    rot: 0,
+    angle: 0,
     autoRot: true,
-    lastTile: null,
+    pos: new THREE.Vector3(),
     tile: null,
+    top: 0,
     ok: false,
+    why: '',
+    aimed: false,
     ghost: null,
     hintText: '',
     seen: -10,
     spin: 0,
+    spinDir: 1,
+    hold: 0,
+    rep: 0,
+    touchHold: false,
 
     onEquip(slot) { placer.sync(slot, true); },
     onUnequip() {
       placer.hideVisuals();
       placer.itemId = null;
+      placer.touchHold = false;
       G.hud.setToolHint('');
     },
     sync(slot, force) {
@@ -2307,9 +2626,8 @@
       placer.itemId = id;
       const def = id && G.items.def(id);
       placer.type = (def && def.place) || null;
-      placer.rot = 0;
+      placer.angle = 0;
       placer.autoRot = true;
-      placer.lastTile = null;
       placer.hideVisuals();
       placer.setMini(placer.type);
     },
@@ -2324,95 +2642,107 @@
       if (placer.ghost) placer.ghost.obj.visible = false;
       placer.ghost = null;
     },
-    rotate() {
-      placer.rot = (placer.rot + 1) % 4;
+    // dir = +1 / -1 (15° steps)
+    rotate(dir, silent) {
+      dir = dir < 0 ? -1 : 1;
+      placer.angle = normAngle(Math.round((placer.angle + dir * ANGLE_STEP) / ANGLE_STEP) * ANGLE_STEP);
       placer.autoRot = false;
       placer.spin = 1;
-      G.sfx('ui_click', { volume: 0.3 });
+      placer.spinDir = dir;
+      if (!silent) G.sfx('ui_click', { volume: 0.3 });
     },
     update(dt, slot) {
       placer.seen = frameNo;
       placer.sync(slot || G.inventory.getSelected(), false);
-      if (G.input.pressed('KeyR')) placer.rotate();
-      placer.spin = Math.max(0, placer.spin - dt * 4);
+      const I = G.input;
+      const back = I.down('ShiftLeft') || I.down('ShiftRight');
+      if (I.pressed('KeyR')) { placer.rotate(back ? -1 : 1); placer.hold = 0; placer.rep = 0; }
+      else if (I.down('KeyR') || placer.touchHold) {
+        // holding keeps turning
+        placer.hold += dt;
+        if (placer.hold > 0.35) {
+          placer.rep -= dt;
+          if (placer.rep <= 0) { placer.rep = 0.08; placer.rotate(back && !placer.touchHold ? -1 : 1, true); }
+        }
+      } else placer.hold = 0;
+      placer.spin = Math.max(0, placer.spin - dt * 8);
       if (placer.inner) {
-        placer.inner.rotation.set(0.25, -0.6 + clock * 0.4 + placer.spin * 0.5, 0);
+        placer.inner.rotation.set(0.25, -0.6 + clock * 0.4 + placer.spin * 0.3 * placer.spinDir, 0);
         placer.inner.position.y = Math.sin(clock * 2) * 0.006;
       }
       const type = placer.type, def = type && structureDefs[type];
-      placer.tile = null;
       placer.ok = false;
+      placer.aimed = false;
+      placer.tile = null;
       if (!def) {
         placer.hideVisuals();
         placer.hintText = 'Tohle se zatím nedá postavit.';
         G.hud.setToolHint(placer.hintText);
         return;
       }
+      const rotKey = I.touchMode ? btnR() + ': Otočit' : 'R: Otočit (Shift+R zpět)';
       eyeRay();
-      const hitS = raycastStructure(PLACE_RANGE);
-      const t = rayDeck(PLACE_RANGE + 2, _hit);
-      let tile = null;
-      if (hitS && (t < 0 || _rayDist < t)) tile = hitS.tile;
-      else if (t >= 0 && horiz(_hit.x, _hit.z) <= PLACE_RANGE) tile = raft.tileAt(_hit.x, _hit.z);
-      if (!tile) {
+      const hit = aimFloor(PLACE_RANGE + 1.5, _hit);
+      if (hit !== 'top' || horiz(_hit.x, _hit.z) > PLACE_RANGE) {
         placer.hideVisuals();
-        placer.hintText = 'Namiř na volné místo na voru.';
+        placer.hintText = hit === 'side' ? 'Namiř na podlahu nebo na horní stranu bloku.' : 'Namiř na volné místo na voru.';
         G.hud.setToolHint(placer.hintText);
         return;
       }
-      if (tile !== placer.lastTile) {
-        placer.lastTile = tile;
-        if (placer.autoRot && def.facesWater && !facesWater(tile, placer.rot)) {
-          for (let r = 0; r < 4; r++) if (facesWater(tile, r)) { placer.rot = r; break; }
-        }
-      }
-      placer.tile = tile;
-      placer.ok = !tile.structure;
+      let x = snapM(_hit.x), z = snapM(_hit.z);
+      const y = Math.round(placer.top * 100) / 100;
+      if (placer.autoRot && def.facesWater) placer.angle = waterAngle(x, z);
+      let why = fitReason(type, x, y, z, placer.angle, null);
+      if (why && why !== 'deck' && nudge(type, x, y, z, placer.angle, _nudged)) { x = _nudged.x; z = _nudged.z; why = ''; }
+      placer.pos.set(x, y, z);
+      placer.aimed = true;
+      placer.tile = nearestTile(x, z);             // the raft tile under the ghost (for tests / older callers)
+      placer.ok = !why;
+      placer.why = why;
       const gh = ghostFor(type);
       if (placer.ghost && placer.ghost !== gh) placer.ghost.obj.visible = false;
       placer.ghost = gh;
       if (gh) {
         gh.obj.visible = true;
-        gh.obj.position.set((tile.i + 0.5) * TILE, G.C.DECK_Y, (tile.j + 0.5) * TILE);
-        gh.obj.rotation.y = placer.rot * HALF_PI - placer.spin * placer.spin * HALF_PI;
+        gh.obj.position.set(x, G.C.DECK_Y + y, z);
+        gh.obj.rotation.y = placer.angle - placer.spin * placer.spin * ANGLE_STEP * placer.spinDir;
         if (gh.ok !== placer.ok) {
           gh.ok = placer.ok;
           for (const m of gh.meshes) m.material = placer.ok ? M.ghostOk : M.ghostBad;
         }
       }
-      const rotKey = G.input.touchMode ? btnR() : 'R';
       if (placer.ok) {
-        placer.hintText = btnL() + ': Postavit – ' + def.name + ' · ' + rotKey + ': Otočit';
-        if (def.facesWater && !facesWater(tile, placer.rot)) placer.hintText += ' · Tip: otoč ji směrem k vodě';
+        placer.hintText = btnL() + ': Postavit – ' + def.name + ' · ' + rotKey;
+        if (def.facesWater && !frontOverWater(type, x, y, z, placer.angle)) placer.hintText += ' · Tip: přední strana má mířit k vodě';
       } else {
-        placer.hintText = 'Tady už něco stojí. Najdi volné místo.';
+        placer.hintText = FIT_TEXT[why] + ' · ' + rotKey;
       }
       G.hud.setToolHint(placer.hintText);
     },
     primaryDown() {
-      if (!placer.ok || !placer.tile || !placer.type) {
-        if (placer.tile) G.sfx('error');
+      if (!placer.ok || !placer.aimed || !placer.type) {
+        if (placer.aimed) G.sfx('error');
         return;
       }
       const slot = G.inventory.getSelected();
       if (!slot || slot.id !== placer.itemId) return;
-      const tile = placer.tile, type = placer.type, id = placer.itemId, rot = placer.rot;
+      const type = placer.type, id = placer.itemId;
+      const at = { x: placer.pos.x, y: placer.pos.y, z: placer.pos.z, angle: placer.angle };
       if (!G.inventory.consumeSelected(1)) return;
-      const s = placeStructure(type, tile, rot);
+      const s = placeStructure(type, null, 0, undefined, at);
       if (!s) {
         G.inventory.add(id, 1, 'refund');
         G.sfx('error');
         return;
       }
-      const pos = tileCenter(tile, new THREE.Vector3());
+      const pos = toWorld(s, 0, 0.2, 0, new THREE.Vector3());
       snd('place', pos);
       fxCall('debris', pos, 0xcaa678, 6);
       placer.hideVisuals();
-      placer.lastTile = null;
     },
     primaryUp() {},
-    secondaryDown() { if (placer.type) placer.rotate(); },
-    secondaryUp() {},
+    secondaryDown() { if (placer.type) { placer.rotate(1); placer.hold = 0; placer.rep = 0; placer.touchHold = true; } },
+    secondaryUp() { placer.touchHold = false; },
     hint() { return placer.hintText; },
   };
 
@@ -2463,7 +2793,11 @@
     structureDefs,
     getTile(i, j) { return grid.get(nkey(Math.floor(i), Math.floor(j))) || null; },
     isEdge(t) { return !!t && DIRS.some((d) => !grid.has(nkey(t.i + d[0], t.j + d[1]))); },
-    structureAt(x, z) { const t = raft.tileAt(x, z); return t ? t.structure : null; },
+    structureAt: structureAtPoint,
+    structureInBox,
+    footprint,
+    fits(type, x, y, z, angle, ignore) { return !fitReason(type, x, y || 0, z, normAngle(angle), ignore || null); },
+    fitReason,
     canBuildAt,
     build,
     repair,
@@ -2644,7 +2978,9 @@
         const def = structureDefs[s.type];
         let data = null;
         try { data = def && def.save ? def.save(s) : s.data; } catch (err) { data = null; }
-        outS.push({ type: s.type, i: s.tile.i, j: s.tile.j, rotation: s.rotation, data: data === undefined ? null : data });
+        const r3 = (v) => Math.round(v * 1000) / 1000;
+        outS.push({ type: s.type, i: s.tile.i, j: s.tile.j, rotation: r3(s.rotation), x: r3(s.x), y: r3(s.y), z: r3(s.z), a: r3(s.angle),
+          data: data === undefined ? null : data });
       }
       return { tiles: outTiles, structures: outS, speed: Math.round(speed * 100) / 100 };
     },
@@ -2674,9 +3010,18 @@
         if (Array.isArray(d.structures)) {
           for (const o of d.structures) {
             if (!o || !structureDefs[o.type]) continue;
+            const data = o.data == null ? {} : o.data;
+            const x = Number(o.x), z = Number(o.z);
+            const lim = (MAX_SPAN + 4) * TILE;
+            if (Number.isFinite(x) && Number.isFinite(z) && Math.abs(x) < lim && Math.abs(z) < lim) {
+              const y = G.clamp(Number(o.y) || 0, 0, 20), a = Number(o.a);
+              placeStructure(o.type, null, o.rotation, data, { x, y, z, angle: Number.isFinite(a) ? a : undefined });
+              continue;
+            }
+            // older saves: one structure per tile, on its centre
             const t = grid.get(nkey(Math.floor(Number(o.i)), Math.floor(Number(o.j))));
-            if (!t || t.structure) continue;
-            placeStructure(o.type, t, o.rotation != null ? o.rotation : o.rot, o.data == null ? {} : o.data);
+            if (!t) continue;
+            placeStructure(o.type, t, o.rotation != null ? o.rotation : o.rot, data);
           }
         }
         const sp = Number(d.speed);
@@ -2696,6 +3041,7 @@
         try { def.update(s, dt); } catch (err) { if (!s._uerr) { s._uerr = true; console.error('[raft] update ' + s.type, err); } }
       }
       netCatch();
+      checkSupport(dt);
     },
 
     frame(dt) {

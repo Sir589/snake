@@ -4,7 +4,8 @@
 // original foundation/repair/reinforce behaviour, the others place/remove blocks.
 //
 // Public: G.build = { blocks, types, selected, add(type,x,y,z,rot), remove(b, refund),
-//   heightAt(x,z,maxY), blocked(x,z,yLow,yHigh,r), cellFree(x,y,z) }
+//   heightAt(x,z,maxY), blocked(x,z,yLow,yHigh,r), cellFree(x,y,z), blockAt(x,y,z),
+//   solidTop(b), solidAt(x,ly,z) }
 // Blocks live in raft-local integer cells: x,z are world metres (the raft never moves in XZ),
 // y counts metres above the deck top. They are children of G.raft.group so they bob with it.
 (function () {
@@ -44,7 +45,7 @@
     blocks: new Set(),
     selected: 0,
     rotOffset: 0,
-    add: null, remove: null, heightAt: null, blocked: null, cellFree: null,
+    add: null, remove: null, heightAt: null, blocked: null, cellFree: null, blockAt: null, solidTop: null, solidAt: null,
   });
 
   // cell occupancy "x,y,z" -> block ; columns "x,z" -> Set(block)
@@ -127,6 +128,26 @@
   }
 
   function cellFree(x, y, z) { return !cells.has(ck(x, y, z)); }
+  function blockAt(x, y, z) { return cells.get(ck(x, y, z)) || null; }
+  // Height of the solid part of a block for collision with furniture (sloped shapes count as full).
+  function solidTop(b) {
+    switch (b.t.shape) {
+      case 'slab': return 0.2;
+      case 'lantern': return 0.62;
+      case 'door': return 2;
+      default: return 1;
+    }
+  }
+  // Is the point (x, ly, z) — ly in metres above the deck top — inside a block? Returns the top of
+  // that block's solid part at (x, z) (deck-relative), or null.
+  function solidAt(x, ly, z) {
+    if (!B.blocks.size) return null;
+    const b = cells.get(ck(Math.floor(x), Math.floor(ly), Math.floor(z)));
+    if (!b) return null;
+    const h = b.t.shape === 'door' ? (b.open ? 0 : 2) : b.t.shape === 'lantern' ? 0.62 : solidHeight(b, x - Math.floor(x), z - Math.floor(z));
+    const top = b.y + h;
+    return ly >= b.y && ly <= top ? top : null;
+  }
 
   // ---------------------------------------------------------------------------
   // Textures, materials, geometry
@@ -421,6 +442,9 @@
   B.heightAt = heightAt;
   B.blocked = blocked;
   B.cellFree = cellFree;
+  B.blockAt = blockAt;
+  B.solidTop = solidTop;
+  B.solidAt = solidAt;
 
   // ---------------------------------------------------------------------------
   // Aiming: voxel ray march from the eye
@@ -478,7 +502,7 @@
     for (let k = 0; k < h; k++) if (cells.has(ck(x, y + k, z))) { aim.reason = 'Tady už něco je.'; return aim; }
     if (!supported(x, y, z)) { aim.reason = 'Blok musí stát na voru nebo u jiného bloku.'; return aim; }
     if (!nearRaft(x, z)) { aim.reason = 'Tak daleko od voru stavět nejde.'; return aim; }
-    if (y <= 1 && G.raft.structureAt && G.raft.structureAt(x + 0.5, z + 0.5)) { aim.reason = 'Tady stojí vybavení voru.'; return aim; }
+    if (G.raft.structureInBox && G.raft.structureInBox(x, x + 1, y, y + (t.shape === 'slab' ? 0.2 : h), z, z + 1)) { aim.reason = 'Tady stojí vybavení voru.'; return aim; }
     if (t.shape !== 'lantern' && overlapsPlayer(x, y, z, h)) { aim.reason = 'Stojíš v cestě.'; return aim; }
     aim.ok = true;
     return aim;

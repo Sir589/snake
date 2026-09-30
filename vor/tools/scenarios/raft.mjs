@@ -422,8 +422,8 @@ export default async (page, h) => {
         pl.update(0.016, slot);
         eq(pl.tile, free, 'aimed tile'); eq(pl.ok, true, 'can place');
         ok(/Postavit – Truhla/.test(G.hud.toolHint), 'place hint: ' + G.hud.toolHint);
-        pl.secondaryDown(slot);                                   // rotate (touch path; R key does the same)
-        eq(pl.rot, 1, 'rotated');
+        for (let k = 0; k < 6; k++) { pl.secondaryDown(slot); pl.secondaryUp(slot); }   // 6 × 15° (touch path; R does the same)
+        ok(Math.abs(pl.angle - Math.PI / 2) < 1e-9, 'rotated a quarter turn in 15° steps: ' + pl.angle);
         const n0 = I.count('truhla');
         clearEv();
         pl.primaryDown(slot);

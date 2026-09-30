@@ -10,6 +10,7 @@ rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ost
 - Stavění jako v Minecraftu: s kladivem v ruce vyber blok (Z / X nebo klepnutím v nabídce) – dřevo, podlaha,
   schody, okna, dveře, střecha, kámen, zábradlí, lucerny a barevné bloky. Levé tlačítko staví, pravé bourá (materiál se vrátí),
   R otáčí. Stavět jde do výšky až 16 bloků, takže i vícepatrové domy.
+- Vybavení (gril, truhla, síť, vlajka…) jde položit kamkoli na palubu i na bloky, otáčí se po 15° (R, zpět Shift+R).
 - Mobil: joystick vlevo, tažení prstem vpravo = rozhlížení, tlačítka pro akce.
 - **Verze pro Windows (Steam):** složka `desktop/` (Electron). Hotová hra: `desktop/dist/win-unpacked/SireMore.exe`.
   Sestavení: `cd desktop`, `npm install`, `npm run build`. Postup vydání na Steamu: `desktop/STEAM.md`.

@@ -238,7 +238,7 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
 - **Structures**: `registerStructure(type, def)` with
   `def = { name, item, create(s) → Object3D, interact?: { label(s), onInteract(s) },
   update?(s, dt), save?(s), load?(s, data), remove?(s), size? }`.
-  A structure instance is `s = { type, tile, object, data, rotation }`; one structure per tile;
+  A structure instance is `s = { type, tile, object, data, rotation, x, y, z, angle }` (free placement, see §10);
   its object sits on the tile centre at deck height inside `group`. Default save = `s.data`.
   `structures` (array), `findStructures(type)`, `placeStructure(type, tile, rotation)`,
   `removeStructure(s, refund)`.
@@ -262,7 +262,7 @@ Starting inventory: `hak` ×1 (selected, slot 0), `prkno` ×4, `plast` ×4.
   foundation; LMB builds; aiming at a damaged tile → LMB repairs; aiming at an undamaged normal
   tile → LMB reinforces; RMB on a structure → dismantles it and refunds its item; hint text
   shows cost and what is missing) and `place` (ghost of the selected placeable on the aimed
-  empty tile, R rotates 90°, LMB places and consumes the item).
+  free spot on the deck or on a block top, R / Shift+R turns by 15°, LMB places and consumes the item).
 - Emits `build:tile`, `build:reinforce`, `build:repair`, `build:structure {type}`,
   `structure:removed`. Increments `G.stats.tilesBuilt`.
 - Save: tiles (i, j, hp, reinforced), structures (type, i, j, rotation, data).
@@ -536,7 +536,14 @@ These are part of the contract now; other modules may rely on them.
   `structureDefs`. Structure defs may add `data()`, `frame(s, dt)`, `contents(s)`, `interactY` /
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
-  a detached dummy `s.tile`), so it must be side-effect free. `rotation` is an integer quarter turn.
+  a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Free placement (ROADMAP 1).** Structures sit anywhere: `s.x/s.z` (raft plane), `s.y` (metres above the deck
+  top), `s.angle` (radians; hand placement uses 15° steps). `placeStructure(type, tile, rot, data, {x, y, z, angle})`
+  places exactly there; without the last argument it uses the tile centre. A footprint table (`FOOT` in raft.js,
+  or `def.footprint = { r: [x0, x1, z0, z1], h, sup?, deckOnly? }`) is checked against build.js blocks and other
+  structures (`G.raft.fits / fitReason / structureInBox / structureAt / footprint`). Several structures may share
+  a tile (`tile.structure` = the first one). When a structure loses its floor it drops to the next floor below or
+  falls into the sea (contents float). Saves store x/y/z/a; older saves load on tile centres.
   `placeStructure` and `addTile` emit the build events themselves (not during reset/load).
   Interactables made by raft.js carry `.structure` and optionally `.passive()`: ui.js then shows
   the label without the [E] key cap.
