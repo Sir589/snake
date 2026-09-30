@@ -4,7 +4,7 @@
 3D hra o přežití na voru (ve stylu hry *Raft*). Loviš trosky hákem, craftíš, rozšiřuješ a zpevňuješ vor,
 rybaříš, čistíš vodu, bráníš se žralokovi a pirátům a objevuješ ostrovy. Běží v prohlížeči na PC i na mobilu.
 
-- Spuštění: otevři `vor/index.html` v prohlížeči (je potřeba internet kvůli knihovně three.js).
+- Spuštění: otevři `vor/index.html` v prohlížeči. Hra běží úplně offline (three.js je v `vor/lib/`, písma ve `vor/fonts/`).
 - Ovládání PC: WASD pohyb, myš rozhlížení, levé tlačítko = použít (hák: drž a pusť, pak drž = navíjet),
   E = akce, Tab = batoh a crafting, 1–8 = výběr předmětu, Esc = pauza, H = nápověda.
 - Stavění jako v Minecraftu: s kladivem v ruce vyber blok (Z / X nebo klepnutím v nabídce) – dřevo, podlaha,

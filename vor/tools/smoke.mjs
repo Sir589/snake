@@ -46,7 +46,7 @@ catch {
 const { chromium } = playwright;
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.json': 'application/json', '.md': 'text/plain' };
+  '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.woff2': 'font/woff2', '.json': 'application/json', '.md': 'text/plain' };
 const server = http.createServer((req, res) => {
   const url = decodeURIComponent(req.url.split('?')[0]);
   const file = path.join(root, url === '/' ? 'index.html' : url);
@@ -66,17 +66,13 @@ const page = await browser.newPage(mobile
   ? { viewport, isMobile: true, hasTouch: true, deviceScaleFactor: 1 }
   : { viewport });
 
-// Serve the three.js CDN build from a local cache (the sandbox proxy's CA is not trusted by
-// Chromium) and skip web fonts, which are optional.
-const THREE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js';
-const cacheDir = path.join(here, '.cache');
-const threeCache = path.join(cacheDir, 'three-0.160.0.min.js');
-if (!fs.existsSync(threeCache)) {
-  fs.mkdirSync(cacheDir, { recursive: true });
-  execSync(`curl -sSf -o "${threeCache}" "${THREE_URL}"`);
-}
-await page.route(THREE_URL, (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: fs.readFileSync(threeCache) }));
-await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
+// The game must run fully offline: every request that leaves the local test server fails
+// the run (three.js and the fonts are bundled in lib/ and fonts/).
+const offlineViolations = [];
+await page.route((url) => !url.href.startsWith('http://127.0.0.1:'), (route) => {
+  offlineViolations.push(route.request().url());
+  route.abort();
+});
 const pageErrors = [], consoleErrors = [], consoleWarnings = [];
 page.on('pageerror', (e) => pageErrors.push(String(e && e.stack || e)));
 page.on('console', (m) => {
@@ -85,7 +81,7 @@ page.on('console', (m) => {
   else if (m.type() === 'warning' && !t.includes('build/three.min.js')) consoleWarnings.push(t);
 });
 page.on('requestfailed', (r) => {
-  if (!/fonts\.g/.test(r.url())) consoleErrors.push('request failed: ' + r.url());
+  if (r.url().startsWith('http://127.0.0.1:')) consoleErrors.push('request failed: ' + r.url());
 });
 
 const h = {
@@ -168,6 +164,7 @@ try {
   report.harnessError = String(err && err.stack || err);
 }
 report.pageErrors = pageErrors;
+if (offlineViolations.length) consoleErrors.push('external requests (game must run offline): ' + offlineViolations.join(', '));
 report.consoleErrors = consoleErrors;
 report.consoleWarnings = consoleWarnings.slice(0, 20);
 console.log(JSON.stringify(report, null, 2));

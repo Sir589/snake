@@ -4,9 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Širé moře</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap">
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="css/ui.css">
 <style>
   /* Single deliberate look: dusk sea, weathered wood, brass. Game is dark-first on purpose. */
@@ -39,11 +37,11 @@
 <div id="ui"><div class="boot-msg" id="boot-msg">Širé moře<small>Načítám moře…</small></div></div>
 <div id="touch"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+<script src="lib/three.min.js"></script>
 <script>
   if (!window.THREE) {
     document.getElementById('boot-msg').innerHTML =
-      'Širé moře<small>Nepodařilo se načíst 3D knihovnu. Zkontroluj připojení k internetu a obnov stránku.</small>';
+      'Širé moře<small>Nepodařilo se načíst 3D knihovnu (soubor lib/three.min.js chybí). Zkus hru přeinstalovat.</small>';
   }
 </script>
 <script src="js/core.js"></script>

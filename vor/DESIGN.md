@@ -15,7 +15,8 @@ listed here (or add a clearly documented extra to *your own* module).
 - **Plain browser JS, no build step, no ES modules.** Each file is a classic `<script>` loaded by
   `index.html` in this order: `core, items, world, raft, player, debris, fishing, creatures,
   pirates, islands, audio, goals, ui, touch`. Wrap each file in `(function () { 'use strict'; ... })();`.
-- **three.js r160 UMD** is loaded as the global `THREE` (from cdnjs). Do not import anything else.
+- **three.js r160 UMD** is loaded as the global `THREE` from the bundled `lib/three.min.js`; fonts come from
+  `fonts/fonts.css`. The game must work fully offline (smoke.mjs fails on any external request). Do not import anything else.
   No external assets: all geometry is procedural (Box/Cylinder/Cone/Sphere/Lathe/Extrude… or
   BufferGeometry), textures are generated with `<canvas>` → `THREE.CanvasTexture`.
   Audio is synthesized with WebAudio. No fetches.
