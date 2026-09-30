@@ -279,7 +279,7 @@
 }
 .st-day { display: flex; align-items: baseline; gap: 5px; }
 .st-day span { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--sand); }
-.st-day b { font-family: var(--font-display); font-weight: 400; font-size: 26px; line-height: 1; color: var(--foam); }
+.st-day b { font-family: var(--font-body); font-weight: 800; font-size: 26px; line-height: 1; color: var(--foam); font-variant-numeric: tabular-nums; }
 .dial { width: 30px; height: 30px; flex: none; }
 .dial-sun { fill: #ffd774; }
 .dial-moon { fill: #e8eef4; }
@@ -406,12 +406,35 @@
 .prompt kbd { color: var(--ink); background: var(--brass); border-color: #f4cd7b; border-bottom-color: #9c7327; }
 .toolhint {
   max-width: 100%;
-  padding: 3px 10px;
+  padding: 4px 12px;
   font-size: 15px;
   font-weight: 700;
-  color: var(--sand);
+  line-height: 1.35;
+  color: var(--foam);
+  background: rgba(4, 20, 25, 0.62);
+  border-radius: 16px;
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.6);
 }
+.toolhint .hk {
+  display: inline-block;
+  margin: 0 5px 0 0;
+  padding: 0 6px;
+  font-family: var(--font-body);
+  font-size: 0.82em;
+  font-weight: 800;
+  line-height: 1.45;
+  vertical-align: 0.06em;
+  color: var(--ink);
+  text-shadow: none;
+  background: var(--brass);
+  border: 1px solid #f4cd7b;
+  border-bottom: 2px solid #9c7327;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.toolhint .hk-sep { color: var(--foam-faint); }
 @keyframes fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* ---- stats (bottom-left) ---- */
@@ -588,6 +611,7 @@
   left: 50%;
   top: calc(18vh + var(--st));
   transform: translateX(-50%);
+  width: max-content;
   max-width: calc(100vw - 32px);
   text-align: center;
   pointer-events: none;
@@ -745,6 +769,7 @@
 .dur-row b { color: var(--foam); }
 .storage-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .storage-head .label { margin: 0; font-size: 14px; }
+.storage-btns { display: flex; flex: none; justify-content: flex-end; gap: 6px; }
 .storage-tip { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--foam-faint); max-width: calc(var(--slot) * 5 + 24px); }
 
 /* crafting */
@@ -1043,6 +1068,12 @@
 
 /* touch devices */
 .ui-root.is-touch .lock-hint, .ui-root.is-touch .panel-keys, .ui-root.is-touch .slot-key { display: none; }
+/* touch: the help table shows the touch column only; tool hints stay clear of the button column */
+.ui-root.is-touch .help-table th:nth-child(2), .ui-root.is-touch .help-table td:nth-child(2),
+.ui-root.is-touch .help-table tr.no-touch { display: none; }
+.ui-root.is-touch .help-table th:first-child { width: 50%; }
+.ui-root.is-touch .help-table td:nth-child(3) { width: auto; color: var(--foam); font-size: 1.1em; }
+.ui-root.is-touch .below { width: min(560px, max(260px, calc(100vw - 500px))); }
 .ui-root.is-touch .goal-toggle {
   display: grid;
   place-items: center;
@@ -1133,7 +1164,16 @@
   .hotbar { gap: 4px; padding: 5px; }
   .held-name { font-size: 15px; }
   .banner-text { font-size: 36px; padding: 2px 14px 8px; }
+  /* below the (max 3) notes and the goal card, above the crosshair */
+  .banner { top: calc(31vh + var(--st)); }
+  .notes { transition: opacity 0.25s; }
+  .ui-root.banner-on .notes { opacity: 0.3; }
   .below { top: 30px; }
+  /* touch: centre column from the left edge to just before the right button column */
+  .ui-root.is-touch .below {
+    width: calc(100vw - 104px - var(--sl) - var(--sr));
+    transform: translateX(calc(12px + var(--sl) - 50vw));
+  }
   .prompt { font-size: 15px; }
   .toolhint { font-size: 13.5px; }
   .lock-hint { font-size: 15px; top: 64%; }
@@ -1149,14 +1189,15 @@
   .detail, .storage { min-height: 0; }
   .grid { gap: 5px; }
   .craft-view { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; gap: 10px; }
-  .cats { flex-direction: row; overflow-x: auto; gap: 4px; padding-bottom: 4px; touch-action: pan-x; }
-  .cat { flex: none; padding: 7px 11px; border-left: 0; border-bottom: 3px solid transparent; font-size: 15px !important; }
+  .cats { flex-direction: row; flex-wrap: wrap; gap: 4px; padding-bottom: 4px; }
+  .cat { flex: none; padding: 6px 10px; border-left: 0; border-bottom: 3px solid transparent; font-size: 15px !important; }
   .cat.active { border-bottom-color: var(--brass); }
   .recipe { grid-template-columns: 42px minmax(0, 1fr); gap: 10px; padding: 9px; }
   .r-icon { width: 42px; height: 42px; font-size: 24px; }
   .r-name { font-size: 16px; }
   .r-desc { font-size: 13.5px; }
-  .need-name { display: none; }
+  .need { padding: 2px 7px 2px 4px; font-size: 13px; gap: 4px; }
+  .need-name { font-size: 12px; }
   .btn-craft { grid-column: 1 / -1; min-height: 40px; }
 
   .scr-menu { place-items: end center; padding: calc(24px + var(--st)) calc(20px + var(--sr)) calc(28px + var(--sb)) calc(20px + var(--sl)); background: linear-gradient(0deg, rgba(3, 18, 23, 0.92) 0%, rgba(3, 18, 23, 0.6) 55%, rgba(3, 18, 23, 0.15) 100%); }

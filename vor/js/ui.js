@@ -129,7 +129,10 @@
     ['islandsVisited', 'Navštívené ostrovy'],
     ['debrisCollected', 'Sebrané trosky'],
     ['itemsCrafted', 'Vyrobené předměty'],
+    ['gold', 'Poklad (zlaťáky)'],
   ];
+  // item:gained sources that only move things the player already had (no new treasure)
+  const NOT_NEW = { storage: 1, refund: 1, start: 1, debug: 1, return: 1, replace: 1 };
 
   function slotHTML(i, key) {
     return (key ? '<span class="slot-key">' + key + '</span>' : '') +
@@ -142,7 +145,7 @@
     const stat = (k, label) => '<div class="stat stat-' + k + '" id="stat-' + k + '" title="' + label + '">' +
       '<span class="stat-ico">' + STAT_ICON[k] + '</span><span class="stat-bar"><i></i></span><b class="stat-val">100</b></div>';
     let help = '';
-    for (const r of HELP_ROWS) help += '<tr><th scope="row">' + esc(r[0]) + '</th><td>' + r[1] + '</td><td>' + esc(r[2]) + '</td></tr>';
+    for (const r of HELP_ROWS) help += '<tr' + (r[2] === '—' ? ' class="no-touch"' : '') + '><th scope="row">' + esc(r[0]) + '</th><td>' + r[1] + '</td><td>' + esc(r[2]) + '</td></tr>';
     let tips = '';
     for (const t of TIPS) tips += '<li>' + esc(t) + '</li>';
 
@@ -234,9 +237,10 @@
               '<div class="detail" id="detail"></div>' +
               '<div class="storage is-hidden" id="storage">' +
                 '<div class="storage-head"><h3 class="label" id="storage-title">Truhla</h3>' +
-                  '<button type="button" class="btn btn-small" id="btn-take-all">Vzít vše</button></div>' +
+                  '<span class="storage-btns"><button type="button" class="btn btn-small" id="btn-store-all">Uložit vše</button>' +
+                  '<button type="button" class="btn btn-small" id="btn-take-all">Vzít vše</button></span></div>' +
                 '<div class="grid grid-sto" id="grid-sto"></div>' +
-                '<p class="storage-tip">Shift + klik přesune věc mezi truhlou a batohem.</p>' +
+                '<p class="storage-tip" id="storage-tip">Shift + klik přesune věc mezi truhlou a batohem. E zavře.</p>' +
               '</div>' +
             '</aside>' +
           '</div>' +
@@ -314,10 +318,10 @@
       '<div class="card">' +
         '<h2 class="card-title">Nastavení</h2>' +
         '<div class="settings">' +
-          '<div class="set-row"><label for="set-sens">Citlivost myši</label><input type="range" id="set-sens" min="0.2" max="3" step="0.05"><output id="set-sens-v"></output></div>' +
+          '<div class="set-row"><label for="set-sens" id="lbl-sens">Citlivost myši</label><input type="range" id="set-sens" min="0.2" max="3" step="0.05"><output id="set-sens-v"></output></div>' +
           '<div class="set-row"><label for="set-volume">Hlasitost</label><input type="range" id="set-volume" min="0" max="1" step="0.05"><output id="set-volume-v"></output></div>' +
           '<div class="set-row"><label for="set-music">Hudba</label><input type="range" id="set-music" min="0" max="1" step="0.05"><output id="set-music-v"></output></div>' +
-          '<div class="set-row"><span class="set-label" id="lbl-invert">Obrátit osu Y<small>myš nahoru = pohled dolů</small></span>' +
+          '<div class="set-row"><span class="set-label" id="lbl-invert">Obrátit osu Y<small id="lbl-invert-sub">myš nahoru = pohled dolů</small></span>' +
             '<button type="button" class="switch" id="set-invert" role="switch" aria-checked="false" aria-labelledby="lbl-invert"><i></i></button></div>' +
           '<div class="set-row"><span class="set-label" id="lbl-quality">Kvalita grafiky</span>' +
             '<div class="seg" role="radiogroup" aria-labelledby="lbl-quality">' +
@@ -368,6 +372,7 @@
   let catEls = [];
   let suppressGains = false;
   let panelGoalVersion = -1;
+  let lastPanelPointerT = -1e9;       // last pointerdown in the panel (a click right after it is not a keyboard Enter)
 
   // Screens
   const overlays = [];                // stack of 'help' | 'settings' | 'victory'
@@ -375,6 +380,7 @@
   let pausedAt = -1e9;
   let newConfirmUntil = 0;
   let victoryPending = 0;
+  let pausedByOverlay = false;        // help / victory paused a running game; closing it resumes
 
   // Notifications / banners
   const notes = [];                   // { el, until, gainId?, count?, text }
@@ -430,7 +436,7 @@
       'ring-fg', 'ring-label', 'prompt', 'prompt-text', 'toolhint', 'held-name', 'hotbar', 'lock-hint', 'banner', 'banner-text',
       'fx-under', 'fx-vignette', 'fx-lowhp', 'panel-layer', 'inv-panel', 'tab-inv', 'tab-craft', 'craft-badge', 'panel-keys',
       'btn-inv-close', 'inv-view', 'craft-view', 'grid-back', 'grid-hot', 'detail', 'storage', 'storage-title', 'grid-sto',
-      'btn-take-all', 'cats', 'recipes', 'scr-menu', 'scr-pause', 'scr-over', 'scr-victory', 'scr-help', 'scr-settings',
+      'btn-take-all', 'btn-store-all', 'storage-tip', 'lbl-sens', 'lbl-invert-sub', 'cats', 'recipes', 'scr-menu', 'scr-pause', 'scr-over', 'scr-victory', 'scr-help', 'scr-settings',
       'continue-info', 'btn-continue', 'btn-new', 'pause-info', 'over-reason', 'over-stats', 'victory-stats', 'cursor-stack',
       'tooltip', 'set-sens', 'set-sens-v', 'set-volume', 'set-volume-v', 'set-music', 'set-music-v', 'set-invert',
       'set-quality-low', 'set-quality-high'];
@@ -660,7 +666,7 @@
     // tool hint
     const hint = playing ? H.toolHint || '' : '';
     showEl(E.toolhint, !!hint);
-    if (hint) setText(E.toolhint, hint);
+    if (hint && E.toolhint._raw !== hint) { E.toolhint._raw = hint; setHTML(E.toolhint, hintHTML(hint)); }
     // progress ring
     const p = playing && H.progress != null && Number.isFinite(H.progress) ? Math.max(0, Math.min(1, H.progress)) : null;
     showEl(E.ring, p !== null);
@@ -675,6 +681,15 @@
       setCls(E.ring, 'full', p >= 0.999);
       if (lbl) setText(E['ring-label'], lbl);
     }
+  }
+
+  // 'Levé tlačítko: Hodit · E: Vstát' → key names become small brass key caps.
+  const HINT_KEY = /^((?:Levé tlačítko|Pravé tlačítko|Mezerník|Shift|Esc|[A-Z]|[●◐⤒↻](?: nebo [●◐⤒↻])?)(?: \([^)]{1,8}\))?)\s*:\s*/;
+  function hintHTML(hint) {
+    return String(hint).split(' · ').map((part) => {
+      const m = HINT_KEY.exec(part);
+      return m ? '<kbd class="hk">' + esc(m[1]) + '</kbd>' + esc(part.slice(m[0].length)) : esc(part);
+    }).join('<span class="hk-sep"> · </span>');
   }
 
   function updateFx(dt) {
@@ -784,7 +799,8 @@
     E.notes.prepend(node);
     const n = { el: node, until: now() + life };
     notes.unshift(n);
-    while (notes.length > 6) dropNote(notes[notes.length - 1], true);
+    const cap = window.innerWidth <= 640 ? 3 : 6;   // phones: keep the stack clear of the banner
+    while (notes.length > cap) dropNote(notes[notes.length - 1], true);
     return n;
   }
   function dropNote(n, fast) {
@@ -812,6 +828,9 @@
     n.text = e.text;
   }
   function onGained(e) {
+    if (e && e.id === 'zlato' && G.state === 'playing' && !NOT_NEW[e.source]) {
+      G.stats.gold = (Number(G.stats.gold) || 0) + Math.max(0, e.count | 0);
+    }
     if (!built || !e || suppressGains || e.source === 'start') return;
     if (G.state !== 'playing') return;
     const d = itemDef(e.id);
@@ -864,6 +883,7 @@
     E.banner.className = 'banner banner-' + k;
     void E.banner.offsetWidth;
     E.banner.classList.add('show');
+    setCls(root, 'banner-on', true);
   }
   // Event-driven banner: skipped when the emitting module shows its own banner around the same time.
   function eventBanner(text, kind, secs, key, gapMs) {
@@ -887,6 +907,7 @@
       bannerUntil = 0;
       bannerText = '';
       E.banner.classList.remove('show');
+      setCls(root, 'banner-on', false);
     }
   }
 
@@ -917,6 +938,7 @@
     showEl(E.storage, !!storage);
     showEl(E.detail, !storage);
     setText(E['storage-title'], storageTitle);
+    setText(E['storage-tip'], touch() ? 'Klepni na věc a pak na políčko v truhle. Nebo ji přetáhni.' : 'Shift + klik přesune věc mezi truhlou a batohem. E zavře.');
     E['inv-panel'].classList.toggle('with-storage', !!storage);
     invDirty = true;
     renderPanel();
@@ -1153,6 +1175,26 @@
     sfx(moved ? 'ui_click' : 'error', moved ? 0.45 : 0.35);
     invDirty = true;
   }
+  // Everything from the backpack (not the hotbar) goes into the open storage.
+  function storeAll() {
+    const inv = G.inventory;
+    const a = invSlots(), sa = arrOf(storage);
+    if (!inv || !a || !sa || typeof inv.moveToRange !== 'function') return;
+    let moved = 0, left = false;
+    for (let i = HOTBAR; i < a.length; i++) {
+      if (!a[i]) continue;
+      moved += inv.moveToRange(a, i, sa, 0, sa.length) || 0;
+      if (a[i]) left = true;
+    }
+    held = null;
+    sfx(moved ? 'ui_click' : 'error', moved ? 0.5 : 0.35);
+    if (moved) G.notify('Uloženo: ' + moved + ' ks', 'good');
+    else if (left) G.notify('Truhla je plná', 'warn');
+    else G.notify('V batohu nic není (lišta zůstává).', 'info');
+    if (moved && left) G.notify('Všechno se nevešlo.', 'warn');
+    invDirty = true;
+    renderPanel();
+  }
   function splitAt(grid, i) {
     const inv = G.inventory;
     const a = gridArr(grid);
@@ -1209,6 +1251,7 @@
 
   function onPanelPointerDown(e) {
     pointerX = e.clientX; pointerY = e.clientY;
+    lastPanelPointerT = now();
     const hit = slotFromEvent(e);
     if (!hit) {
       // backdrop click (outside the panel) puts a lifted stack back
@@ -1439,7 +1482,14 @@
     if (i >= 0) overlays.splice(i, 1);
     if (invOpen) closeInventory(true);
     overlays.push(name);
-    if (G.state === 'playing' && !G.paused) G.setUIBlock(OVERLAY_BLOCK[name], true);
+    if (G.state === 'playing' && !G.paused) {
+      // full-screen help / victory card: the world must not keep running behind it (shark!)
+      if (name === 'help' || name === 'victory') {
+        pausedByOverlay = true;
+        G.setPaused(true);
+        if (!G.paused) { pausedByOverlay = false; G.setUIBlock(OVERLAY_BLOCK[name], true); }
+      } else G.setUIBlock(OVERLAY_BLOCK[name], true);
+    }
     sfx('ui_open', 0.5);
     refreshScreens();
   }
@@ -1448,6 +1498,10 @@
     if (!name) return;
     G.setUIBlock(OVERLAY_BLOCK[name], false);
     if (!silent) sfx('ui_close', 0.5);
+    if (!overlays.length && pausedByOverlay) {
+      pausedByOverlay = false;
+      if (G.state === 'playing' && G.paused) G.setPaused(false);
+    }
     refreshScreens();
   }
   function toggleHelp() {
@@ -1489,6 +1543,12 @@
   // ---------------------------------------------------------------------------
   // Settings
   // ---------------------------------------------------------------------------
+  function applyTouchTexts() {
+    if (!built) return;
+    const t = touch() || root.classList.contains('is-touch');
+    setText(E['lbl-sens'], t ? 'Citlivost rozhlížení' : 'Citlivost myši');
+    setText(E['lbl-invert-sub'], t ? 'prst nahoru = pohled dolů' : 'myš nahoru = pohled dolů');
+  }
   function syncSettings() {
     if (!built) return;
     const S = G.settings;
@@ -1541,8 +1601,11 @@
     layer.addEventListener('pointerdown', onPanelPointerDown);
     layer.addEventListener('contextmenu', (e) => e.preventDefault());
     layer.addEventListener('click', (e) => {
-      // keyboard activation of a slot (Enter) arrives as a click with detail 0
-      if (e.detail !== 0) return;
+      // keyboard activation of a slot (Enter / Space) arrives as a click with detail 0 and no
+      // pointerdown before it. Touch taps can also have detail 0, so skip clicks that follow a
+      // pointerdown (that already picked up / dropped the stack).
+      if (e.detail !== 0 || now() - lastPanelPointerT < 700) return;
+      if (e.pointerType === 'mouse' || e.pointerType === 'touch' || e.pointerType === 'pen') return;
       const hit = slotFromEvent(e);
       if (!hit) return;
       if (held) dropHeldOn(hit.grid, hit.i); else pickUp(hit.grid, hit.i);
@@ -1578,12 +1641,13 @@
       if (!storage || !G.inventory) return;
       suppressGains = true;
       let n = 0;
-      try { n = G.inventory.takeAll(storage, 'loot'); } finally { suppressGains = false; }
+      try { n = G.inventory.takeAll(storage, 'storage'); } finally { suppressGains = false; }
       sfx(n ? 'pickup' : 'error', 0.5);
       if (n) G.notify('Přesunuto do batohu: ' + n + ' ks', 'good');
       invDirty = true;
       renderPanel();
     });
+    click('btn-store-all', () => storeAll());
     E.detail.addEventListener('click', (e) => {
       const b = e.target.closest('button');
       if (!b) return;
@@ -1695,7 +1759,7 @@
       overTimer = setTimeout(() => { if (G.state === 'dead') { overShown = true; refreshScreens(); } }, 1700);
     });
     on('settings:changed', syncSettings);
-    on('input:touchmode', () => { setCls(root, 'is-touch', true); goalVersion = -1; });
+    on('input:touchmode', () => { setCls(root, 'is-touch', true); goalVersion = -1; applyTouchTexts(); invDirty = true; });
 
     // pointer lock: a refusal right after a working lock is usually the browser's short cooldown
     // after Esc — let the next click on the game try again instead of falling back to free look.
@@ -1714,6 +1778,7 @@
     pendingBanners.length = 0;
     bannerUntil = 0;
     E.banner.classList.remove('show');
+    setCls(root, 'banner-on', false);
     vignette = 0;
     shownGoal = null;
     goalVersion = -1;
@@ -1741,7 +1806,8 @@
       else if (invOpen) closeInventory();
       else if (G.state === 'playing') {
         if (G.paused) { if (now() - pausedAt > 280) G.setPaused(false); }
-        else if (!(G.pirates && G.pirates.seated)) G.setPaused(true);
+        // Esc at the cannon means "get up" (pirates.js); P always pauses
+        else if (pk || !(G.pirates && G.pirates.seated)) G.setPaused(true);
       }
       return;
     }
@@ -1758,7 +1824,7 @@
     const invKey = I.pressed('Tab') || I.pressed('KeyI');
     const craftKey = I.pressed('KeyC');
     if (invOpen) {
-      if (invKey) { closeInventory(); return; }
+      if (invKey || (storage && I.pressed('KeyE'))) { closeInventory(); return; }
       if (craftKey) {
         if (invTab === 'craft' && !storage) closeInventory();
         else { setTab('craft'); renderPanel(); sfx('ui_click', 0.3); }
@@ -1797,7 +1863,8 @@
 
     init() {
       build();
-      if (built && touch()) root.classList.add('is-touch');
+      if (built && coarse()) setCls(root, 'is-touch', true);
+      applyTouchTexts();
     },
 
     reset() {
@@ -1814,12 +1881,14 @@
       goalHolding = false;
       allDoneAt = 0;
       victoryPending = 0;
+      pausedByOverlay = false;
       clearNotes();
       pendingBanners.length = 0;
       for (const k in throttle) delete throttle[k];
       bannerUntil = 0;
       bannerText = '';
       E.banner.classList.remove('show');
+      setCls(root, 'banner-on', false);
       E['fx-under'].classList.remove('on');
       E['fx-lowhp'].classList.remove('on');
     },
