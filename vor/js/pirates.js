@@ -1194,7 +1194,7 @@
     if (!r.mesh.parent) G.scene.add(r.mesh);
     return r;
   }
-  function freeRing(r) { r.active = false; r.mesh.visible = false; }
+  function freeRing(r) { r.active = false; r.mesh.visible = false; if (r.mesh.parent) r.mesh.parent.remove(r.mesh); }
   function updateRings(dt) {
     for (const r of rings) {
       if (!r.active) continue;
@@ -2370,9 +2370,12 @@
       b.bubbleT -= dt;
       b.bubbleAge += dt;
       const k = Math.min(1, b.bubbleAge / 0.18), out = b.bubbleT < 0.2 ? Math.max(0, b.bubbleT / 0.2) : 1;
-      const sc = (0.6 + 0.4 * easeOut(k)) * out;
+      // close up (a boarder right in front of you) the bubble shrinks so it never fills the screen
+      const cp = G.camera.position;
+      const near = G.clamp(Math.hypot(b.pos.x - cp.x, b.pos.z - cp.z) / 7, 0.28, 1);
+      const sc = (0.6 + 0.4 * easeOut(k)) * out * near;
       bub.scale.set(2.0 * sc, 0.5 * sc, 1);
-      bub.position.y = (b.state === 'boat' ? 1.7 : 2.25) + (b.state === 'dying' ? -0.8 : 0);
+      bub.position.y = (b.state === 'boat' ? 1.7 : 2.25) + (b.state === 'dying' ? -0.8 : 0) + 0.25 * (1 - near);
       if (b.bubbleT <= 0) bub.visible = false;
     }
   }
@@ -2600,7 +2603,11 @@
     if (ship && ship.target) G.combat.remove(ship.target);
     ship = null;
     API.ship = null;
-    if (shipM) { shipM.root.visible = false; shipM.bar.visible = false; if (shipM.skirt) shipM.skirt.mesh.visible = false; }
+    if (shipM) {
+      shipM.root.visible = false; shipM.bar.visible = false;
+      if (shipM.bar.parent) shipM.bar.parent.remove(shipM.bar);     // re-added by the next raid
+      if (shipM.skirt) shipM.skirt.mesh.visible = false;
+    }
     if (wake.mesh) wake.mesh.visible = false;
     wake.count = 0;
     for (let i = boarders.length - 1; i >= 0; i--) removeBoarder(boarders[i]);

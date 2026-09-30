@@ -79,6 +79,33 @@ export function lib(page, h, tag) {
     return false;
   };
 
+  // After a real click on "Nová hra" / "Pokračovat" headless Chromium grants pointer lock, and
+  // then every synthetic mouse event carries a bogus movement (lock point → cursor) that spins
+  // the view. Drop the lock and use the free-look fallback instead (like smoke.mjs does).
+  const freeLook = async () => {
+    await page.evaluate(() => { G.input.lockFailed = true; });
+    // let a pending lock request settle (the pointerlockchange event is async)
+    const t0 = Date.now();
+    while (Date.now() - t0 < 1500) {
+      if (await page.evaluate(() => G.input.pointerLocked === !!document.pointerLockElement)) break;
+      await page.waitForTimeout(50);
+    }
+    await page.waitForTimeout(150);
+    await page.evaluate(() => {
+      G._suppressLockPause = true;
+      if (document.pointerLockElement) document.exitPointerLock();
+    });
+    await until(() => !document.pointerLockElement && !G.input.pointerLocked, null, 8000, 'pointer lock released');
+    await page.waitForTimeout(200);
+    for (let k = 0; k < 20; k++) {
+      const ok = await page.evaluate(() => { G.input.lockFailed = true; if (G.paused) G.setPaused(false); return !G.paused && !document.pointerLockElement; });
+      if (ok) break;
+      await page.waitForTimeout(100);
+    }
+    await page.mouse.move(h.viewport ? h.viewport.width / 2 : 640, h.viewport ? h.viewport.height / 2 : 360);
+    await until(() => !G.paused && G.state === 'playing', null, 8000, 'playing (not paused) in free look');
+  };
+
   // Presses the hotbar key that selects the first hotbar slot holding `id`.
   const selectItem = async (id) => {
     const i = await page.evaluate((iid) => G.inventory.slots.slice(0, 8).findIndex((s) => s && s.id === iid), id);
@@ -99,5 +126,5 @@ export function lib(page, h, tag) {
       listeners: Object.values(G.events._h).reduce((a, l) => a + l.length, 0) };
   });
 
-  return { note, fail, ok, until, gameWait, frames, shot, aimAt, selectItem, sceneStats, log };
+  return { note, fail, ok, until, gameWait, frames, shot, aimAt, selectItem, sceneStats, freeLook, log };
 }

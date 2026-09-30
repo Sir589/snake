@@ -666,8 +666,14 @@
     const by = -Math.abs(Math.cos(bobPhase)) * 0.012 * bobAmp;
     const ix = Math.sin(clock * 0.9) * 0.003, iy = Math.sin(clock * 1.7) * 0.004;
     const sw = swimK * (Math.sin(clock * 2.4) * 0.012 - Math.sin(strokePulse * Math.PI) * 0.03);
+    // narrow (portrait phone) screens: pull the held item in so it stays on screen, and make it
+    // smaller so it does not cover the crosshair
+    const aspect = G.camera ? G.camera.aspect : 1.78;
+    const hx = Math.min(HAND_X, 0.21 * aspect);
+    const hs = clamp(aspect / 1.2, 0.62, 1);
+    if (Math.abs(hand.scale.x - hs) > 1e-3) hand.scale.setScalar(hs);
     hand.position.set(
-      HAND_X + lagX * 0.4 + bx + ix,
+      hx + lagX * 0.4 + bx + ix,
       HAND_Y + lagY * 0.4 + by + iy + handVy + landDip * 0.35 - (1 - ek) * 0.3 - lowK * 0.45 - swimK * 0.04 + sw,
       HAND_Z);
     hand.rotation.set(
@@ -1022,7 +1028,7 @@
       w.position.y = 0.097;
       g.add(w);
     }
-    g.position.set(0, -0.035, 0);
+    g.position.set(-0.01, 0.01, 0);
     g.rotation.set(0.38, 0, -0.08);
     g.scale.setScalar(0.8);
     const outer = new THREE.Group();

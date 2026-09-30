@@ -109,7 +109,7 @@
     ['Sebrat, otevřít, použít', K('E'), 'E'],
     ['Rychlá lišta', K('1') + '–' + K('8') + ' nebo kolečko myši', 'klepni na políčko'],
     ['Inventář a výroba', K('Tab') + ' nebo ' + K('I') + ', výroba ' + K('C'), '🎒'],
-    ['Otočit stavbu', K('R'), '—'],
+    ['Otočit stavbu', K('R') + ' nebo pravé tlačítko myši', '◐ nebo ↻'],
     ['Pauza, zavřít okno', K('Esc') + ' nebo ' + K('P'), '❚❚'],
     ['Nápověda', K('H'), '—'],
     ['Ztlumit zvuk', K('M'), '—'],

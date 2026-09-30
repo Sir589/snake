@@ -12,7 +12,7 @@ export default async (page, h) => {
 
   await h.eval(() => {
     G.debug.god(true);
-    G.debug.buildRing();                                 // 4×4 raft: tiles -2..1
+    for (let i = -2; i <= 1; i++) for (let j = -2; j <= 1; j++) if (!G.raft.getTile(i, j)) G.raft.addTile(i, j);   // 4×4 raft
     G.inventory.remove('prkno', G.inventory.count('prkno'));
     G.inventory.remove('plast', G.inventory.count('plast'));
     for (const id of ['cisticka', 'gril', 'truhla', 'sit', 'plachta', 'kotva']) G.inventory.add(id, 1, 'debug');
@@ -43,6 +43,16 @@ export default async (page, h) => {
       return null;
     }, type);
     if (!p) L.fail('no interactable for ' + type);
+    // step next to it (E reaches 3.2 m), standing on the deck on the raft-centre side
+    await h.eval((q) => {
+      const P = G.player.position, d = Math.hypot(q[0] - P.x, q[2] - P.z);
+      if (d < 2.2) return;
+      const k = 1.6 / Math.max(0.01, Math.hypot(q[0], q[2]));
+      let x = q[0] - q[0] * k, z = q[2] - q[2] * k;
+      if (!G.raft.tileAt(x, z)) { x *= 0.7; z *= 0.7; }
+      G.debug.teleport(x, z);
+    }, p);
+    await until(() => G.player.onGround && !G.player.inWater, null, 8000, 'standing on the deck');
     await aimAt(p[0], p[1], p[2]);
     const label = await until((t) => { const c = G.interaction.current; return c && c.structure && c.structure.type === t && G.interaction.labelOf(c); }, type, 10000, type + ' under the crosshair');
     return label;
@@ -99,6 +109,8 @@ export default async (page, h) => {
     }
   });
   await until(() => G.raft.findStructures('net')[0].data.storage.slots.some(Boolean), null, 60000, 'the net catching a plank');
+  // leftover planks floating right at the net would take the crosshair ("Sebrat: Prkno")
+  await h.eval(() => G.debris.clear());
   const p0 = await h.eval(() => G.inventory.count('prkno'));
   label = await use('net');
   await until((p) => G.inventory.count('prkno') > p, p0, 8000, 'net emptied into the inventory');

@@ -26,8 +26,9 @@ export default async (page, h) => {
 
   await page.click('#btn-new');
   await until(() => G.state === 'playing' && !G.paused, null, 10000, 'Nová hra starts');
-  await h.eval(() => { G.input.lockFailed = true; });
+  await L.freeLook();
   await until(() => document.getElementById('scr-menu').classList.contains('is-hidden') && !!document.getElementById('hotbar'), null, 8000, 'menu hidden, HUD shown');
+  await until(() => G.time > 0.1, null, 15000, 'first game frames');
   ok(await h.eval(() => G.camera.position.distanceTo(G.player.eye(new THREE.Vector3())) < 0.5), 'camera handed over to the player');
   ok(await h.eval(() => /prken/.test(document.getElementById('goal-text').textContent)), 'goal 1 on the goal card');
   await L.gameWait(1);

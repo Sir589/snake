@@ -60,6 +60,8 @@ export default async (page, h) => {
   await until(() => G.input.move.y === 0 && G.input.move.x === 0, null, 5000, 'joystick released');
   const p1 = await h.eval(() => G.player.position.toArray());
   ok(Math.hypot(p1[0] - p0[0], p1[2] - p0[2]) > 0.3, 'player walked with the joystick (' + Math.hypot(p1[0] - p0[0], p1[2] - p0[2]).toFixed(2) + ' m)');
+  await h.eval(() => G.debug.teleport(0, 0));        // the start raft is small: back to its middle
+  await until(() => G.player.onGround && !G.player.inWater, null, 8000, 'back on the deck');
 
   // --- look: drag on the right side turns the view ---
   const y0 = await h.eval(() => G.player.yaw);

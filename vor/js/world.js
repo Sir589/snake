@@ -571,9 +571,12 @@
     void main() {
       vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * mvPosition;
-      gl_PointSize = min(aParams.x * uScale / max(-mvPosition.z, 0.05), 480.0);
+      float dz = max(-mvPosition.z, 0.05);
+      // cap the on-screen size (about a fifth of the screen height) and fade out particles that
+      // come right up to the camera (pickup sparkles at the hand, splashes when swimming)
+      gl_PointSize = min(aParams.x * uScale / dz, min(uScale * 0.36, 480.0));
       float em = step(9.5, aParams.z);
-      vCol = vec4(aColor * mix(uLight, 1.0, em), aParams.y);
+      vCol = vec4(aColor * mix(uLight, 1.0, em), aParams.y * smoothstep(0.35, 1.3, dz));
       vShape = vec2(aParams.z - em * 10.0, aParams.w);
       #include <fog_vertex>
     }

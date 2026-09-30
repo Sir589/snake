@@ -18,8 +18,8 @@ export default async (page, h) => {
   await until(() => !document.getElementById('scr-menu').classList.contains('is-hidden'), null, 10000, 'main menu');
   await page.click('#btn-new');
   await until(() => G.state === 'playing', null, 10000, 'Nová hra starts the game');
-  await h.eval(() => { G.input.lockFailed = true; });   // headless: no pointer lock, free look
-  await page.mouse.move(640, 360);
+  await L.freeLook();                                   // headless: free look instead of pointer lock
+  await until(() => document.getElementById('goal-text').textContent.trim() !== '' && G.time > 0.1, null, 15000, 'goal card filled');
   const goal = await h.eval(() => ({ text: document.getElementById('goal-text').textContent, hint: G.goals.hintOf(G.goals.current()), tool: G.hud.toolHint }));
   note('goal card: ' + JSON.stringify(goal));
   ok(/prken/.test(goal.text) && /hák/.test(goal.hint), 'first goal tells what to do');
@@ -32,7 +32,7 @@ export default async (page, h) => {
   });
 
   // --- hooking phase ---
-  const stats = { throws: 0, items: 0, empty: 0 };
+  const stats = { throws: 0, items: 0, empty: 0, hits: 0 };
   const pickTarget = () => h.eval(() => {
     const p = G.player.position;
     let best = null, bs = Infinity;
@@ -66,14 +66,14 @@ export default async (page, h) => {
     await until(() => G.debris.hookState().state === 'idle', null, 90000, 'hook back');
     await page.mouse.up();
     const got = await h.eval((g) => window.__np.gained.slice(g), got0);
-    if (got.length) stats.items += got.length; else stats.empty++;
+    if (got.length) { stats.items += got.length; stats.hits++; } else stats.empty++;
     note('throw ' + stats.throws + ' at ' + tg.type + ' ' + tg.dist.toFixed(1) + ' m → ' + (got.join(' ') || 'nothing') + ' · planks ' + (await h.eval(() => G.goals.get('prkna').progress)) + '/6');
     if (stats.throws === 2) await shot('hooking');
   }
   const res = await h.eval(() => ({ first: window.__np.first, played: G.time - window.__np.t0, goal: G.goals.get('prkna').done, inv: G.inventory.slots.filter(Boolean).map((s) => s.id + 'x' + s.count).join(',') }));
   note('first debris in reach after ' + (res.first === null ? 'never' : res.first.toFixed(1) + ' s') + '; played ' + res.played.toFixed(0) + ' s; ' + JSON.stringify(stats) + '; inventory ' + res.inv);
   ok(res.first !== null && res.first < 20, 'debris comes within hook reach quickly');
-  ok(stats.throws > 0 && stats.items / stats.throws >= 0.4, 'the hook catches something on most throws (' + stats.items + ' catches / ' + stats.throws + ' throws)');
+  ok(stats.throws > 0 && stats.hits / stats.throws >= 0.4, 'the hook catches something on most throws (' + stats.hits + ' of ' + stats.throws + ' throws, ' + stats.items + ' item stacks)');
   ok(res.goal, 'goal 1 (6 planks) done within ' + budget + ' s of game time');
 
   // --- craft the hammer in the crafting panel ---
@@ -85,6 +85,7 @@ export default async (page, h) => {
   await shot('crafting');
   await page.click('#craft-btn-kladivo');
   await until(() => G.inventory.count('kladivo') === 1, null, 8000, 'hammer crafted');
+  await page.mouse.move(640, 360);   // back to the centre while the panel is open (free look would turn)
   await h.key('KeyC');
   await until(() => !G.ui.isOpen(), null, 8000, 'panel closed');
   ok(true, 'hammer crafted through the crafting panel');
