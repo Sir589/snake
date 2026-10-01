@@ -48,8 +48,11 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
    a trosky. Uložená hra hosta zůstane nedotčená. Test: `node vor/tools/coop-test.mjs` (hostitel + host přes LAN hub).
    *Zbývá (2. fáze):* žralok a piráti pro hosty, truhly/gril/čistička/síť/postel a zvířata hostitele pro hosty,
    přenos přes Steam vyzkoušet se dvěma účty (kód je hotový, ale tady jde testovat jen s jedním účtem).
-11. **Steam** – zabalit hru (Electron nebo Tauri), účet Steamworks (poplatek 100 USD za hru),
+11. ✅ **HOTOVO (moje část) – Steam** – zabalit hru (Electron nebo Tauri), účet Steamworks (poplatek 100 USD za hru),
     stránka obchodu, ikony, testování. Registraci a platbu musí udělat majitel účtu sám.
+    *Hotovo:* aplikace `desktop/` (Electron, `SireMore.exe`), ikony, steamworks.js (úspěchy za úkoly, překryv Steamu,
+    lobby pro kooperaci), šablony SteamPipe, návrhy obrázků do obchodu a návod krok za krokem `desktop/STEAM.md`.
+    *Zbývá na tobě:* účet Steamworks, poplatek, daně, App ID, nahrání buildu, stránka obchodu (viz STEAM.md).
 
 Už hotové: stavění z bloků (`build.js`), vybavení jde vzít zpět (kladivo → podržet pravé tlačítko
 na vybavení = rozebrat a vrátit do inventáře), vor až 24×24, kanón 360°.

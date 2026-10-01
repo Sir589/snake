@@ -17,6 +17,8 @@ Kroky označené **👤 JEN TY** musíš udělat sám (účet, platby, daně, so
 | Testovací App ID 480 (Spacewar) | `desktop/steam_appid.txt` |
 | Steam úspěchy (achievementy) za splněné úkoly – připravené | viz kapitola 6 |
 | Šablony pro nahrání buildu (SteamPipe) | `desktop/steampipe/` |
+| Hra s přáteli: Steam lobby + P2P a LAN server | `desktop/steam.js`, `desktop/net-hub.js`, `vor/js/net.js` |
+| Návrhy obrázků do obchodu (screenshoty 1920×1080, capsule obrázky) | `desktop/store/out/` (vyrobí `node desktop/store/make-store-art.mjs`) |
 
 ### Jak hru sestavit znovu (po změnách ve hře)
 
@@ -156,6 +158,17 @@ cd C:\SteamworksSDK\tools\ContentBuilder\builder
 
 `steam_appid.txt` se na Steam nenahrává (je vyřazený v `depot_build.vdf`) – Steam App ID předá hře sám.
 
+## 7b. Hra s přáteli (kooperace) a Steam
+
+- Přes Steam to funguje bez dalšího nastavení ve Steamworks: hostitel v menu **Hrát s přáteli → Přes Steam** založí
+  lobby (jen pro přátele) a otevře se okno Steamu s pozváním. Kamarád pozvánku přijme a hra se k hostiteli připojí sama.
+- **Vyzkoušej to se dvěma Steam účty na dvou počítačích** (s App ID 480 i s vlastním). Na jednom účtu to vyzkoušet nejde,
+  takže Steam přenos jsem otestovat nemohl – LAN varianta je otestovaná automatickým testem i ve skutečné aplikaci.
+- Přes Wi-Fi (LAN): hostitel zvolí **Na stejné Wi-Fi**; Windows se poprvé zeptá, jestli povolit síťový přístup pro
+  „SireMore“ – je potřeba **Povolit** (soukromé sítě). Ostatní zadají IP adresu, kterou hostitel vidí v pauze.
+- Do popisu hry v obchodě pak můžeš napsat „Kooperace pro 2–8 hráčů (online přes Steam i v místní síti)“ a ve
+  Steamworks zaškrtnout funkce *Online Co-op* a *LAN Co-op*.
+
 ## 8. Stránka v obchodě
 
 Ve Steamworks → **Store Page Admin**. Stránka musí být zveřejněná jako **„Připravujeme“ (Coming Soon) aspoň 2 týdny**
@@ -179,18 +192,23 @@ před vydáním. Valve ji i build před vydáním kontroluje (obvykle 3–5 prac
 
 Na capsule obrázcích smí být jen obrázek hry a **název** – žádné „Nejlepší hra!“, hodnocení ani slevy.
 
+**Návrhy hotové:** ve složce `desktop/store/out/` jsou screenshoty a všechny capsule obrázky ve správných rozměrech
+(vyrobené přímo ze hry). Ber je jako první verzi – klidně je vyměň za vlastní, hezčí záběry (hra má v nastavení
+kvalitu „vysoká“; screenshot ve hře uděláš ve Steamu klávesou F12).
+
 ### Popis
 - **Krátký popis** (max. ~300 znaků), **Dlouhý popis** (O hře), **Hlavní rysy**.
 - Doporučuju mít stránku česky **i anglicky** (většina hráčů na Steamu čte anglicky). Hra je zatím jen česky –
   v Steamworks u jazyků zaškrtni jen **Čeština** (rozhraní + titulky), ať nikdo není zklamaný.
 
 Návrh krátkého popisu (česky):
-> Ztroskotal jsi uprostřed oceánu jen na pár prknech. Loviš trosky hákem, staví vor, rybaříš, čistíš vodu
-> a bráníš se žralokovi i pirátům. Kolik dní na širém moři přežiješ?
+> Ztroskotal jsi uprostřed oceánu jen na pár prknech. Loviš trosky hákem, stavíš vor i celý dům, rybaříš,
+> potápíš se pro poklady, chováš zvířata a bráníš se žralokovi, bouřím i pirátům – sám nebo s přáteli.
+> Kolik dní na širém moři přežiješ?
 
 Návrh (anglicky):
-> Stranded in the middle of the ocean on a few planks. Hook floating debris, build your raft, fish, purify water
-> and fight off a shark and pirates. How long can you survive the open sea? (Czech language only.)
+> Stranded in the middle of the ocean on a few planks. Hook debris, build your raft and a whole house, fish, dive
+> for treasure, keep animals and survive sharks, storms and pirates – alone or with friends. (Czech language only.)
 
 ### Trailer
 - Video **MP4 (H.264)**, 1920×1080, 30 nebo 60 fps, ideálně 30–90 s. První 3 sekundy musí zaujmout.

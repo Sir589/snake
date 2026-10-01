@@ -600,7 +600,7 @@
   function bucketInsert(t, key, geo) {
     let bk = buckets[key];
     if (!bk) {
-      bk = buckets[key] = { mesh: makeBucketMesh(geo, MAX_SPAN * MAX_SPAN), list: [] };
+      bk = buckets[key] = { key, mesh: makeBucketMesh(geo, MAX_SPAN * MAX_SPAN), list: [] };
       group.add(bk.mesh);
     }
     if (bk.list.length >= bk.mesh.instanceMatrix.count) {        // grow (only for odd saves)
@@ -631,6 +631,13 @@
     }
     t.bucket = null;
     t.slot = -1;
+    if (!bk.list.length) {
+      // nobody uses this look any more (e.g. the last damaged tile got repaired): drop the empty mesh
+      group.remove(bk.mesh);
+      bk.mesh.dispose();
+      delete buckets[bk.key];
+      return;
+    }
     bucketChanged(bk);
   }
 
