@@ -100,6 +100,31 @@
       setDayFraction(f);
       if (oceanMat) updateSky();
     },
+    // co-op (ROADMAP 10): the host's weather for guests
+    netState() {
+      return { wa0: windAngle0, wc: windClock, t: world.time, day: world.day, st: world.storm, stT: stormTarget, sp: world.stormPower,
+        go: [world.groundOffset.x, world.groundOffset.y] };
+    },
+    netApply(s) {
+      if (!s) return;
+      if (Number.isFinite(s.wa0) && Math.abs(s.wa0 - windAngle0) > 1e-6) { windAngle0 = s.wa0; setWaveHeading(windAngle0); }
+      if (Number.isFinite(s.wc)) windClock = s.wc;
+      if (Number.isFinite(s.t)) { world.time = s.t; world.dayFraction = s.t / G.C.DAY_LENGTH; }
+      if (Number.isInteger(s.day) && s.day !== world.day) { world.day = s.day; G.stats.days = s.day; G.events.emit('world:day', { day: s.day }); }
+      if (Number.isFinite(s.sp)) { const k = stormKindFor(s.sp); world.stormPower = k.power; }
+      if (Number.isFinite(s.stT)) {
+        const on = s.stT > 0;
+        if (on !== (stormTarget > 0)) {
+          stormTarget = on ? 1 : 0;
+          const k = stormKindFor(world.stormPower);
+          world.stormName = on ? k.name : '';
+          G.events.emit('world:storm', on ? { active: true, power: k.power, name: k.name, text: k.banner } : { active: false });
+        }
+      }
+      if (Number.isFinite(s.st)) world.storm = s.st;
+      if (Array.isArray(s.go)) world.groundOffset.set(Number(s.go[0]) || 0, Number(s.go[1]) || 0);
+      updateWind();
+    },
     // --- extras (documented in the report) ---
     sunDir,                 // unit vector towards the sun
     moonDir,                // unit vector towards the moon
@@ -1858,8 +1883,8 @@
       for (let i = 0; i < NW; i++) wPh[i] = wrap(wPh[i] - (wKX[i] * gx + wKZ[i] * gz), TAU);
     }
 
-    // storms: from day 2
-    if (stormTarget === 0) {
+    // storms: from day 2 (guests get them from the host)
+    if ((G.net && G.net.guest)) { /* host-driven */ } else if (stormTarget === 0) {
       if (world.day >= 2) {
         stormCalm -= dt;
         if (stormCalm <= 0) startStorm();
@@ -1881,7 +1906,7 @@
     }
     // big storm waves batter the raft edges (raft.js keeps the last tile at >= 1 hp)
     const strength = world.storm * world.stormPower;
-    if (strength > 0.55 && G.raft && typeof G.raft.randomEdgeTile === 'function' && typeof G.raft.damageTile === 'function') {
+    if (!(G.net && G.net.guest) && strength > 0.55 && G.raft && typeof G.raft.randomEdgeTile === 'function' && typeof G.raft.damageTile === 'function') {
       stormHitT -= dt;
       if (stormHitT <= 0) {
         stormHitT = G.rand(8, 14) / world.stormPower;
@@ -1908,7 +1933,7 @@
       }
     }
     // strong storms: a big wave now and then sweeps the deck (warning first)
-    if (strength > 1.05) {
+    if (strength > 1.05 && !(G.net && G.net.guest)) {
       if (bigWavePending < 0) {
         bigWaveT -= dt;
         if (bigWaveT <= 0) warnBigWave();

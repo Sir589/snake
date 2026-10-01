@@ -1701,6 +1701,7 @@
 
     list.push(isl);
     usedNames.add(name);
+    if (!isl.decor) G.events.emit('island:spawned', { island: isl });
     if (!isl.decor) spawnedCount++;
     G.scene.add(isl.group);
     isl.provider = G.ground.add({
@@ -1738,6 +1739,7 @@
     for (const im of [isl.frondIM, isl.cocoIM, isl.pileIM]) if (im && im.dispose) im.dispose();
   }
   function removeIsland(isl) {
+    if (isl && !isl.decor) G.events.emit('island:removed', { island: isl, seed: isl.seed });
     const i = list.indexOf(isl);
     if (i < 0) return;
     list.splice(i, 1);
@@ -1952,7 +1954,7 @@
     else vel.set(0, 0, 0);
 
     // schedule: first at ~180 s, then every 240–400 s (postponed while anchored / crowded)
-    if (G.time >= nextAt) {
+    if (G.time >= nextAt && !(G.net && G.net.guest)) {
       let alive = 0;
       for (const isl of list) if (!isl.decor) alive++;
       if ((G.raft && G.raft.anchored) || alive >= MAX_ALIVE) nextAt = G.time + 20;

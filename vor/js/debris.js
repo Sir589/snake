@@ -598,6 +598,7 @@
   let foam = null, foamPhase = null, foamGold = null;
   let mats = null, atlas = null;
   let clock = 0, spawnT = 2, pendingBurst = true, bundleCount = 0, dirty = true;
+  let netSeq = 0;                      // co-op: id of every floating item (host numbering)
   const badgeMats = Object.create(null);
 
   // Hook state
@@ -819,6 +820,7 @@
     d.position.y = waveH(d.position.x, d.position.z) + cfg.float;
     list.push(d);
     model.items.push(d);
+    d.nid = ++netSeq;
     d.label = labelFor(d);
     d.it = G.interaction.add({
       getPosition: (out) => out.set(d.position.x, d.position.y + cfg.lift, d.position.z),
@@ -839,6 +841,7 @@
     if (!model || model.items.length >= CAP) return null;
     const d = makeItem(type, model, pos);
     if (pos && !quiet) nearSplash(d);
+    G.events.emit('debris:spawned', { d });
     return d;
   }
 
@@ -862,6 +865,7 @@
     G.scene.add(sprite);
     d.sprite = sprite;
     if (pos) nearSplash(d);
+    G.events.emit('debris:spawned', { d });
     return d;
   }
 
@@ -895,6 +899,7 @@
 
   function removeItem(d) {
     if (!d.alive) return;
+    G.events.emit('debris:removed', { nid: d.nid });
     d.alive = false;
     d.collected = true;
     let i = list.indexOf(d);
@@ -1015,11 +1020,12 @@
   function simulate(dt) {
     clock += dt;
     refreshRaft();
+    if ((G.net && G.net.guest)) pendingBurst = false;
     if (pendingBurst) { pendingBurst = false; spawnBurst(); }
 
     // spawner: one item upstream every 1.1–2.4 s while fewer than MAX_ALIVE are afloat
     spawnT -= dt;
-    if (spawnT <= 0) {
+    if (spawnT <= 0 && !(G.net && G.net.guest)) {
       spawnT = R(SPAWN_EVERY_MIN, SPAWN_EVERY_MAX);
       if (list.length - bundleCount < MAX_ALIVE) spawn(pickType());
     }

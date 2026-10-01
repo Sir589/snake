@@ -2978,7 +2978,7 @@
       // raid scheduling
       if (!API.active) {
         checkT -= dt;
-        if (checkT <= 0) raidCheck();
+        if (checkT <= 0 && !(G.net && G.net.guest)) raidCheck();
       }
       updateShip(dt);
       updateBoat(dt);

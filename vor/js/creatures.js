@@ -1112,7 +1112,7 @@
     stateT += dt;
     refreshRaft();
     if (S.state === 'away') {
-      if (G.time >= APPEAR_AT) spawnAt(R(50, 60));
+      if (G.time >= APPEAR_AT && !(G.net && G.net.guest)) spawnAt(R(50, 60));
       else { pose(dt); return; }
     }
     if (S.state === 'dead') { updateDead(dt); pose(dt); return; }

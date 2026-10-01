@@ -62,7 +62,7 @@ export default async (page, h) => {
   }, [DESIGN_SFX, [...used]]);
   note(JSON.stringify(r));
 
-  ok(r.modules.join(',') === 'items,world,raft,build,islands,seabed,player,debris,fishing,telescope,creatures,animals,pirates,goals,audio,ui,touch', 'all 17 modules registered in order: ' + r.modules.join(','));
+  ok(r.modules.join(',') === 'net,items,world,raft,build,islands,seabed,player,debris,fishing,telescope,creatures,animals,pirates,goals,audio,ui,touch', 'all 18 modules registered in order: ' + r.modules.join(','));
   ok(r.errored.length === 0, 'no module errored (' + r.errored.join(',') + ')');
   ok(r.apis.length === 0, 'all public API objects exist (' + r.apis.join(',') + ')');
   ok(['consume', 'cup', 'hammer', 'hook', 'place', 'rod', 'spear'].every((t) => r.tools.includes(t)), 'tool handlers registered: ' + r.tools.join(','));

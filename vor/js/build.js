@@ -513,6 +513,7 @@
   function toggleDoor(b) {
     if (b.open && playerInside(b)) { G.notify('Nejdřív ze dveří vyjdi.', 'warn'); return; }
     b.open = !b.open;
+    netOp({ o: 'door', x: b.x, y: b.y, z: b.z, open: b.open ? 1 : 0 });
     G.sfx('hammer', { position: b.obj.getWorldPosition(_p), volume: 0.4 });
   }
   function playerInside(b) {
@@ -563,6 +564,14 @@
     for (const id in meshes) { meshes[id].count = 0; meshes[id].instanceMatrix.needsUpdate = true; }
     dirty.clear();
   }
+  function netOp(o) { if (G.net && G.net.op) G.net.op(o); }
+  // co-op: replace all blocks / pieces with a snapshot from the host (keeps the palette choice)
+  B.netLoad = (d) => {
+    clearAll();
+    if (!d) return;
+    if (Array.isArray(d.blocks)) for (const e of d.blocks) if (Array.isArray(e)) addBlock(String(e[0]), e[1] | 0, e[2] | 0, e[3] | 0, e[4] | 0, !!e[5]);
+    if (Array.isArray(d.pieces)) for (const e of d.pieces) if (Array.isArray(e)) addPiece(String(e[0]), e[1], e[2], e[3], e[4] | 0);
+  };
   B.add = addBlock;
   B.remove = removeBlock;
   B.heightAt = heightAt;
@@ -962,6 +971,7 @@
       if (!G.inventory.hasAll(t.cost)) { G.sfx('error'); G.notify('Chybí ti: ' + costText(t.cost), 'warn'); return; }
       const b = addBlock(t.id, aim.px, aim.py, aim.pz, defaultRot(), false);
       if (!b) { G.sfx('error'); return; }
+      netOp({ o: 'b+', type: t.id, x: b.x, y: b.y, z: b.z, r: b.rot });
       for (const id in t.cost) G.inventory.remove(id, t.cost[id]);
       wrap.swing();
       _p.set(aim.px + 0.5, deckBase() + aim.py + 0.5, aim.pz + 0.5);
@@ -979,6 +989,7 @@
         if (b.t.shape === 'door' && playerInside(b) && !b.open) return;
         _p.set(b.x + 0.5, deckBase() + b.y + 0.5, b.z + 0.5);
         removeBlock(b, true);
+        netOp({ o: 'b-', x: b.x, y: b.y, z: b.z });
         wrap.swing();
         G.sfx('break_wood', { position: _p, volume: 0.6 });
         if (G.fx && G.fx.debris) G.fx.debris(_p, 0x9b6b3d, 6);
@@ -1076,6 +1087,7 @@
     if (!G.inventory.hasAll(t.cost)) { G.sfx('error'); G.notify('Chybí ti: ' + costText(t.cost), 'warn'); return; }
     const p = addPiece(t.id, fine.x0, fine.y0, fine.z0, fine.rot);
     if (!p) { G.sfx('error'); return; }
+    netOp({ o: 'p+', type: t.id, x: p.x0, y: p.y0, z: p.z0, r: p.rot });
     for (const id in t.cost) G.inventory.remove(id, t.cost[id]);
     wrap.swing();
     _p.set((p.x0 + p.x1) / 2, deckBase() + (p.y0 + p.y1) / 2, (p.z0 + p.z1) / 2);
@@ -1088,10 +1100,12 @@
     if (fine.hitKind === 'piece' && h) {
       _p.set((h.x0 + h.x1) / 2, deckBase() + (h.y0 + h.y1) / 2, (h.z0 + h.z1) / 2);
       removePiece(h, true);
+      netOp({ o: 'p-', x: h.x0, y: h.y0, z: h.z0 });
     } else if (fine.hitKind === 'block' && h) {
       if (h.t.shape === 'door' && playerInside(h) && !h.open) return;
       _p.set(h.x + 0.5, deckBase() + h.y + 0.5, h.z + 0.5);
       removeBlock(h, true);
+      netOp({ o: 'b-', x: h.x, y: h.y, z: h.z });
     } else return;
     fine.hit = null; fine.hitKind = '';
     wrap.swing();

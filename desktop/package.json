@@ -26,6 +26,7 @@
       "main.js",
       "preload.js",
       "steam.js",
+      "net-hub.js",
       "package.json",
       "node_modules/**/*"
     ],
@@ -68,6 +69,7 @@
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
-    "steamworks.js": "^0.4.0"
+    "steamworks.js": "^0.4.0",
+    "ws": "^8.22.0"
   }
 }

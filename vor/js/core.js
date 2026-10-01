@@ -316,6 +316,15 @@
     input.requestLock();
   };
 
+  // Co-op guest (net.js): a fresh world that is filled from the host; the local save stays untouched.
+  G.startGuest = () => {
+    resetAll();
+    G.state = 'playing';
+    G.paused = false;
+    G.events.emit('game:start', { fresh: true, guest: true });
+    input.requestLock();
+  };
+
   G.toMenu = () => {
     if (G.state === 'playing') G.save.write();
     G.state = 'menu';
@@ -327,7 +336,7 @@
   G.gameOver = (reason) => {
     if (G.state !== 'playing') return;
     G.state = 'dead';
-    G.save.clear();
+    if (!(G.net && G.net.guest)) G.save.clear();
     input.exitLock();
     G.events.emit('game:over', { reason: reason || 'Moře tě přemohlo.', stats: Object.assign({}, G.stats), time: G.time });
   };
@@ -350,6 +359,7 @@
     })(),
     write() {
       if (G.state !== 'playing') return false;
+      if (G.net && G.net.guest) return false;          // a guest in someone's world keeps its own save untouched
       const data = { version: G.VERSION, time: G.time, stats: G.stats, savedAt: Date.now(), modules: {} };
       for (const m of G.modules) {
         if (!m.save) continue;

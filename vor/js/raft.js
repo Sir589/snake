@@ -829,11 +829,13 @@
   }
 
   // Paid hammer actions (also usable directly by scripts/tests). Return true on success.
+  function netOp(o) { if (G.net && G.net.op) G.net.op(o); }
   function build(i, j) {
     if (canBuildAt(i, j)) return false;
     if (!pay(COST.foundation)) return false;
     const t = addTile(i, j);
     if (!t) return false;
+    netOp({ o: 'tile', i, j });
     const c = tileCenter(t, new THREE.Vector3());
     snd('hammer', c);
     snd('build', c);
@@ -845,6 +847,7 @@
     if (!isLive(t) || t.hp >= t.maxHp) return false;
     if (!pay(COST.repair)) return false;
     t.hp = t.maxHp;
+    netOp({ o: 'lvl', i: t.i, j: t.j, hp: t.maxHp });
     refreshTile(t);
     t.pop = 0.55;
     t.animating = true;
@@ -866,6 +869,7 @@
     if (!pay(COST.metal)) return false;
     setLevel(t, 2);
     t.hp = HP_METAL;
+    netOp({ o: 'lvl', i: t.i, j: t.j, lv: 2, hp: HP_METAL });
     refreshTile(t);
     t.pop = 0.55;
     t.animating = true;
@@ -881,6 +885,7 @@
     if (!pay(COST.reinforce)) return false;
     setLevel(t, 1);
     t.hp = HP_REINFORCED;
+    netOp({ o: 'lvl', i: t.i, j: t.j, lv: 1, hp: HP_REINFORCED });
     refreshTile(t);
     t.pop = 0.55;
     t.animating = true;
@@ -1273,6 +1278,7 @@
     if (!free && !pay(HOLD_COST)) return false;
     t.hold = true;
     holdsDirty = true;
+    netOp({ o: 'hold', i: t.i, j: t.j, on: 1 });
     if (!quiet) {
       const c = tileCenter(t, new THREE.Vector3());
       snd('build', c, 0.8);
@@ -1282,7 +1288,7 @@
     return true;
   }
   // '' when removed (materials back), else the reason in Czech.
-  function removeHold(t) {
+  function removeHold(t, free) {
     t = resolveTile(t);
     if (!t || !t.hold) return 'Tady žádné podpalubí není.';
     for (const s of structures) {
@@ -1293,7 +1299,8 @@
     if (P && P.position && inHold(P.position.x, P.position.y + 0.9, P.position.z) && holdAt(P.position.x, P.position.z) === t) return 'Nejdřív z podpalubí vylez.';
     t.hold = false;
     holdsDirty = true;
-    if (!quiet) {
+    netOp({ o: 'hold', i: t.i, j: t.j, on: 0 });
+    if (!quiet && !free) {
       for (const id in HOLD_COST) G.inventory.add(id, HOLD_COST[id], 'refund');
       G.events.emit('hold:removed', { i: t.i, j: t.j });
     }
@@ -1395,6 +1402,7 @@
     remove(s) { if (s._up) { G.interaction.remove(s._up); s._up = null; } },
   });
 
+  const GUEST_LOCKED = { chest: 'truhlu', grill: 'gril', purifier: 'čističku', net: 'síť', bed: 'postel' };
   function markShadows(obj) {
     obj.traverse((o) => {
       if (o.isMesh && !o.userData.noShadow && !(o.material && o.material.transparent)) { o.castShadow = true; o.receiveShadow = true; }
@@ -1456,7 +1464,10 @@
         label() {
           try { return def.interact.label ? def.interact.label(s) : def.name; } catch (err) { return def.name || ''; }
         },
-        onInteract() { def.interact.onInteract(s); },
+        onInteract() {
+          if ((G.net && G.net.guest) && GUEST_LOCKED[type]) { G.notify('V kooperaci zatím ' + GUEST_LOCKED[type] + ' používá jen hostitel.', 'info'); return; }
+          def.interact.onInteract(s);
+        },
       };
       if (typeof def.interact.enabled === 'function') it.enabled = () => def.interact.enabled(s);
       // true while the label is only information (E does nothing useful) — ui.js may hide the [E] cap
@@ -1466,7 +1477,10 @@
     s._scale = obj.scale.x || 1;
     s._pop = quiet ? 1 : 0;
     updateFlags();
-    if (!quiet) G.events.emit('build:structure', { type, tile });
+    if (!quiet) {
+      G.events.emit('build:structure', { type, tile });
+      netOp({ o: 's+', type, x, y, z, a: angle });
+    }
     return s;
   }
 
@@ -1538,7 +1552,10 @@
     structures.splice(idx, 1);
     if (s.tile && s.tile.structure === s) s.tile.structure = tileStructureFor(s.tile, s);
     updateFlags();
-    if (!quiet) G.events.emit('structure:removed', { type: s.type, refund: !!refund });
+    if (!quiet) {
+      G.events.emit('structure:removed', { type: s.type, refund: !!refund });
+      netOp({ o: 's-', type: s.type, x: s.x, z: s.z });
+    }
     return true;
   }
 
@@ -2168,6 +2185,7 @@
     v.furl.visible = r < 0.97;
   }
   function sailUse(s) {
+    netOp({ o: 'use', type: s.type, x: s.x, z: s.z });
     s.data.up = !s.data.up;
     updateFlags();
     snd('sail', toWorld(s, 0, 2, 0, _v));
@@ -2271,6 +2289,7 @@
     return ringY;
   }
   function anchorUse(s) {
+    netOp({ o: 'use', type: s.type, x: s.x, z: s.z });
     s.data.down = !s.data.down;
     updateFlags();
     snd('anchor', toWorld(s, 0, 0.5, 0.5, _v));
@@ -3254,6 +3273,21 @@
     sailPower: 1,
     anchored: false,
     NEST_Y,
+    // co-op helpers (net.js)
+    netSetTile(i, j, lv, hp) {
+      const t = grid.get(nkey(i, j));
+      if (!t) return false;
+      if (Number.isInteger(lv)) setLevel(t, lv);
+      if (Number.isFinite(hp)) t.hp = G.clamp(hp, 0, t.maxHp);
+      refreshTile(t);
+      return true;
+    },
+    findStructure(type, x, z) {
+      let best = null, bd = 0.3;
+      for (const s of structures) if (s.type === type) { const d = Math.hypot(s.x - x, s.z - z); if (d < bd) { bd = d; best = s; } }
+      return best;
+    },
+    useStructure(s) { const def = structureDefs[s.type]; if (def && def.interact) def.interact.onInteract(s); },
     HOLD_FLOOR,
     HOLD_CEIL,
     HOLD_COST,
@@ -3413,6 +3447,7 @@
   }
 
   function updateStorm(dt) {
+    if ((G.net && G.net.guest)) return;
     const storm = G.world ? G.world.storm || 0 : 0;
     if (storm <= STORM_LEVEL) { stormTimer = Math.max(stormTimer, 10); return; }
     stormTimer -= dt;
@@ -3483,6 +3518,7 @@
       // a big storm wave lifts the raft and hits a wooden tile on the side it comes from
       G.events.on('world:bigwave', (e) => {
         if (!e || e.warn) return;
+        if ((G.net && G.net.guest)) { heave = 1; heavePower = Number(e.power) || 1; return; }
         heave = 1;
         heavePower = Number(e.power) || 1;
         const d = e.dir || { x: 1, z: 0 };

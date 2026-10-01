@@ -49,7 +49,10 @@ export default async (page, h) => {
     G.player.yaw = 0; G.player.pitch = 0;   // face -z
   });
   await frames(2);
-  await h.hold('KeyW'); await gameSec(0.7); await h.release('KeyW');
+  // walk until past the top step (not for a fixed time: headless frame rates vary a lot)
+  await h.hold('KeyW');
+  await page.waitForFunction(() => G.player.position.z < -1.25 || G.player.position.y - G.raft.deckY() > 0.95, null, { timeout: 60000 }).catch(() => {});
+  await h.release('KeyW');
   await frames(3);
   const top = await h.eval(() => ({ y: G.player.position.y - G.raft.deckY(), z: G.player.position.z }));
   ok(top.y > 0.9, 'did not climb stairs: ' + JSON.stringify(top));

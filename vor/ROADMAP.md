@@ -41,7 +41,13 @@ Seřazeno od nejlevnějšího po nejdražší. Každý bod je samostatný úkol 
 9. ✅ **HOTOVO – Pohled z první osoby u kanónu** (kanón už se otáčí o 360°).
    *Hotovo:* u kanónu se díváš přímo podél hlavně (zaměřovací tečka + dráha koule), klávesa V přepne na pohled zezadu
    a zpět. Test: `tools/scenarios/pirates.mjs`.
-10. **Multiplayer** – vyžaduje server (např. WebSocket/WebRTC), synchronizaci voru a hráčů. Velký projekt.
+10. ✅ **HOTOVO (1. fáze) – Multiplayer** – vyžaduje server (např. WebSocket/WebRTC), synchronizaci voru a hráčů. Velký projekt.
+   *Hotovo:* menu **Hrát s přáteli**. Hostitel založí hru **přes Steam** (pozve přátele v překryvu Steamu) nebo **přes Wi-Fi/LAN**
+   (aplikace sama spustí server, přátelé zadají jeho IP adresu – připojit se jde i z prohlížeče). Všichni se vidí (postavičky
+   se jmény), staví společný vor (díly, bloky, jemné díly, vybavení, podpalubí), sdílí čas, počasí, bouře, velké vlny, ostrovy
+   a trosky. Uložená hra hosta zůstane nedotčená. Test: `node vor/tools/coop-test.mjs` (hostitel + host přes LAN hub).
+   *Zbývá (2. fáze):* žralok a piráti pro hosty, truhly/gril/čistička/síť/postel a zvířata hostitele pro hosty,
+   přenos přes Steam vyzkoušet se dvěma účty (kód je hotový, ale tady jde testovat jen s jedním účtem).
 11. **Steam** – zabalit hru (Electron nebo Tauri), účet Steamworks (poplatek 100 USD za hru),
     stránka obchodu, ikony, testování. Registraci a platbu musí udělat majitel účtu sám.
 

@@ -3,6 +3,8 @@
 const { app, BrowserWindow, Menu, ipcMain, shell } = require('electron');
 const path = require('path');
 const steam = require('./steam');
+const os = require('os');
+const netHub = require('./net-hub');
 
 const GAME_TITLE = 'Širé moře';
 // Packaged: the game is copied to resources/game (see "extraResources" in package.json).
@@ -70,6 +72,34 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('game:fullscreen', () => { if (win) win.setFullScreen(!win.isFullScreen()); });
   ipcMain.handle('steam:status', () => steam.status());
   ipcMain.on('steam:achievement', (_e, name) => steam.achievement(name));
+
+  // --- co-op (ROADMAP 10) ---------------------------------------------------------------------
+  // LAN: this app runs the hub; everybody (the host page too) connects to it with a WebSocket.
+  let hub = null;
+  const lanIps = () => {
+    const out = [];
+    for (const list of Object.values(os.networkInterfaces())) {
+      for (const a of list || []) if (a && a.family === 'IPv4' && !a.internal) out.push(a.address);
+    }
+    return out;
+  };
+  ipcMain.handle('net:lanHost', async () => {
+    if (!hub) {
+      hub = netHub.start({ port: netHub.PORT, bind: process.env.SIREMORE_HUB_BIND || '0.0.0.0' });
+      try { await hub.ready; } catch (e) { hub = null; return { ok: false, error: String(e && e.message || e) }; }
+    }
+    return { ok: true, port: netHub.PORT, ips: lanIps() };
+  });
+  ipcMain.handle('net:lanStop', async () => { if (hub) { await hub.close(); hub = null; } return true; });
+  // Steam: lobby + P2P
+  steam.net.setSink((ch, payload) => { if (win && !win.isDestroyed()) win.webContents.send(ch, payload); });
+  ipcMain.handle('net:steamHost', async () => { try { return Object.assign({ ok: true }, await steam.net.host()); } catch (e) { return { ok: false, error: String(e.message || e) }; } });
+  ipcMain.handle('net:steamJoin', async (_e, id) => { try { return Object.assign({ ok: true }, await steam.net.join(String(id))); } catch (e) { return { ok: false, error: String(e.message || e) }; } });
+  ipcMain.on('net:steamInviteDialog', () => steam.net.invite());
+  ipcMain.on('net:steamLeave', () => steam.net.leave());
+  ipcMain.on('net:steamSend', (_e, to, data) => steam.net.send(to, data));
+  ipcMain.handle('net:launchLobby', () => steam.net.launchLobby(process.argv));
+  app.on('before-quit', () => { steam.net.leave(); if (hub) hub.close(); });
 
   app.on('second-instance', () => {
     if (win) { if (win.isMinimized()) win.restore(); win.focus(); }

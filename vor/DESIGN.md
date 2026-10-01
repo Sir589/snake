@@ -486,6 +486,8 @@ JSON: page errors, console errors, final state, fps. Exit code 1 on any error or
 - `--probe`: wraps the module API objects in Proxies and reports reads of members that do not
   exist (`report.probe.missing`, with the caller) and sfx names audio.js does not know.
 
+`node vor/tools/coop-test.mjs` runs the co-op hub with a host and a guest page.
+
 `node vor/tools/run-all.mjs [--only a,b] [--probe] [--jobs N]` runs every scenario in
 `tools/scenarios/` through smoke.mjs one after another and prints a pass/fail table (exit 1 on
 any failure). A scenario may `export const smokeArgs = ['--menu' | '--mobile']`. Shared helpers
@@ -537,6 +539,13 @@ These are part of the contract now; other modules may rely on them.
   `interactAt`, `interact.enabled(s)` / `interact.passive(s)`, `ownShadows`, `facesWater`.
   `create(s)` is also called for the placement ghost and the in-hand model (`s.ghost`, `s.mini`,
   a detached dummy `s.tile`), so it must be side-effect free. `rotation` is in quarter turns and may be fractional.
+- **Co-op, phase 1 (ROADMAP 10).** js/net.js (order 3) + desktop/net-hub.js (LAN WebSocket hub, port 47810) + Steam
+  lobby/P2P in desktop/steam.js. The host is authoritative: sends `welcome` (full snapshot), `raft` snapshots (raft +
+  build save, throttled), `hp` tile updates, `world` (`G.world.netState()` → guests `netApply`), `isl+/isl-`, `d+/d-`
+  (debris with `d.nid`), `wave`. Everybody sends `ps` (player state, 10 Hz) → avatars. Guests send `op`s for their
+  building (`G.net.op`, called from raft.js/build.js) and `grab` for collected debris. While `G.net.guest`: no own
+  debris / island / shark / pirate / storm spawning, no storm damage, no saving (`G.startGuest()`), and chest / grill /
+  purifier / net / bed are host-only. Test: `node vor/tools/coop-test.mjs`.
 - **Cannon view (ROADMAP 9).** Seated at a cannon the camera is first person (eye ~1 m behind the trunnion, 0.44 m
   above it, pitch following the barrel, sight dot on); KeyV toggles the older view from behind & above (`seat.fp`).
 - **Animals (ROADMAP 8).** js/animals.js (order 52): items of category `animal` (krava, koza, ovce, prase, slepice,
